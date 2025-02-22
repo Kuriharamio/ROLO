@@ -6,7 +6,6 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 #include <rot_gicp/gicp/gicp_settings.hpp>
-#include <iostream>
 
 namespace fast_gicp {
 

@@ -9,9 +9,9 @@
 #include <pcl/search/kdtree.h>
 #include <pcl/registration/registration.h>
 
-// #include <sophus/so3.hpp>
+#include <sophus/so3.hpp>
 #include <rot_gicp/so3/so3.hpp>
-// #include <rot_gicp/opt/gauss_newton.hpp>
+#include <rot_gicp/opt/gauss_newton.hpp>
 #include <rot_gicp/gicp/experimental/fast_gicp_mp.hpp>
 
 namespace fast_gicp {

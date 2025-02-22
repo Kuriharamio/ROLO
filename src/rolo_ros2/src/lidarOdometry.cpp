@@ -18,6 +18,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/approximate_voxel_grid.h>
+#include <pcl/filters/filter.h>
 
 #include <pcl/registration/ndt.h>
 #include <pcl/registration/gicp.h>
@@ -25,7 +26,7 @@
 #include <omp.h>
 
 using namespace Eigen;
-
+ofstream tum_file;
 
 
 class TransformFusion : public ParamLoader
@@ -105,7 +106,7 @@ public:
         RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter mappingOdometryHandler\033[0m");
         std::lock_guard<std::mutex> lock(mtx);
         mappingOdomAffine = odom2affine(*odomMsg);
-        mappingOdomTime = odomMsg->header.stamp.nanosec;
+        mappingOdomTime = odomMsg->header.stamp.sec + odomMsg->header.stamp.nanosec / 1e9;
 
         RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave mappingOdometryHandler\033[0m");
     }
@@ -308,7 +309,7 @@ private:
     Matrix3d Rotation;
     Vector3d Translation;
     Vector3d TranslationOld;
-    float LaserOdomPose[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; // [x, y, z, roll, pitch, yaw]
+    float LaserOdomPose[6] = {initPose[0], initPose[1], initPose[2], initPose[3], initPose[4], initPose[5]}; // [x, y, z, roll, pitch, yaw]
 
 
 public:  
@@ -376,6 +377,11 @@ public:
     }
 
     void scanRegeistration(){
+        if(featureOld->points.size() == 0 || featureLast->points.size() == 0){
+            RCLCPP_ERROR(node->get_logger(), "No feature cloud");
+            return;
+        }
+            
         auto start = std::chrono::system_clock::now();
         // std::chrono::duration<double> elapsed_seconds = end - start;
         // printf("Solver Duration: %f ms.\n" ,elapsed_seconds.count() * 1000);
@@ -387,15 +393,52 @@ public:
         feature_rotated->clear();
         // 先平移插值，使中心对齐
         pcl::transformPointCloud(*featureOld, *feature_propagated, transformation_interpolated);
+        
+        // fast_gicp::RotVGICP<PointType, PointType> rot_vgicp;
+        // rot_vgicp.setResolution(1.0);
+        // rot_vgicp.setNumThreads(omp_get_max_threads());
+        // // rot_vgicp.clearTarget();
+        // // rot_vgicp.clearSource();
+        // rot_vgicp.setInputTarget(featureLast);
+        // rot_vgicp.setInputSource(feature_propagated);
+        // rot_vgicp.align(*aligned);
+        // Eigen::Matrix4f trans = rot_vgicp.getFinalTransformation(); // 旋转估计
+        // 确保点云的 is_dense 属性为 false
+        featureLast->is_dense = false;
+        feature_propagated->is_dense = false;
+
+        // 移除无效点
+        std::vector<int> indices;
+        pcl::removeNaNFromPointCloud(*featureLast, *featureLast, indices);
+        pcl::removeNaNFromPointCloud(*feature_propagated, *feature_propagated, indices);
+
+        RCLCPP_INFO(node->get_logger(), "当前帧点云数：%ld, 上一帧点云数：%ld", featureLast->points.size(), feature_propagated->points.size());
+        // 检查点云是否为空
+        if (featureLast->points.empty() || feature_propagated->points.empty()) {
+            RCLCPP_ERROR(node->get_logger(), "有空点云");
+            return;
+        }
+
+        // 检查点云中的点是否有效
+        for (const auto& point : featureLast->points) {
+            if (!std::isinf(point.x) || !std::isinf(point.y) || !std::isinf(point.z)) {
+                RCLCPP_ERROR(node->get_logger(), "发现无效点");
+                return;
+            }
+        }
+
+        // 执行 ICP 配准
+        RCLCPP_INFO(node->get_logger(), "开始icp配准");
         fast_gicp::RotVGICP<PointType, PointType> rot_vgicp;
         rot_vgicp.setResolution(1.0);
         rot_vgicp.setNumThreads(omp_get_max_threads());
-        rot_vgicp.clearTarget();
-        rot_vgicp.clearSource();
         rot_vgicp.setInputTarget(featureLast);
         rot_vgicp.setInputSource(feature_propagated);
         rot_vgicp.align(*aligned);
-        Eigen::Matrix4f trans = rot_vgicp.getFinalTransformation(); // 旋转估计
+
+        Eigen::Matrix4f trans = rot_vgicp.getFinalTransformation();
+        RCLCPP_INFO(node->get_logger(), "icp配准完成");
+        
         // Rotation = trans.block<3, 3>(0, 0).cast<float>() * Rotation.eval();
         Eigen::Affine3f transformStep;
         transformStep.matrix() = trans.cast<float>();
@@ -420,12 +463,15 @@ public:
         aligned->clear();
         pcl::transformPointCloud(*featureOld, *feature_rotated, transformation_interpolated);
         Eigen::Vector3d Reg_translation = Eigen::Vector3d::Zero();
-        cout << "aligned: " << aligned->points.size() << endl
-             << "Reg_translation: " << Reg_translation << endl
-             << "Translation: " << Translation << endl
-             << "TranslationOld: " << TranslationOld << endl;
-             
-        rot_vgicp.computeTranslation(*aligned, Reg_translation, Translation, TranslationOld, 0.1, 0.1, CT_lambda);
+        if (!(Translation == Eigen::Vector3d::Zero())) {
+            RCLCPP_INFO(node->get_logger(), "Translation: %f, %f, %f", Translation(0), Translation(1), Translation(2));
+            rot_vgicp.computeTranslation(*aligned, Reg_translation, Translation, TranslationOld, 0.1, 0.1, CT_lambda);
+        }
+        else{
+            RCLCPP_ERROR(node->get_logger(), "Translation is not valid");
+            return;
+        }
+           
         std::cout << "Reg_translation: " << Reg_translation.transpose() << std::endl;
         auto t_end = std::chrono::system_clock::now();
         std::chrono::duration<double> t_elapsed_seconds = t_end - r_end;
@@ -440,6 +486,8 @@ public:
         cloudTimeStamp = cloudIn->header.stamp;
         cloudTimeCur = cloudIn->header.stamp.sec + cloudIn->header.stamp.nanosec * 1e-9;
         laserCloudInfoBuf.push(*cloudIn);
+        
+        
         // 进行时间匹配
         rclcpp::Time TimeCur = node->now();
         for(int i=0; i<laserCloudInfoBuf.size(); i++){
@@ -507,6 +555,11 @@ public:
             failureFrameFlag = false;
         }
         RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave cloudHandler\033[0m");
+        // auto f_end = std::chrono::system_clock::now();
+        // std::chrono::duration<double> r_elapsed_seconds = f_end - f_start;
+        // // 保存前段时间消耗
+        // tum_file << setprecision(19) << cloudTimeCur << " " 
+        //          << r_elapsed_seconds.count() * 1000 << std::endl;
     }
 
     void updateTransform(){
@@ -688,12 +741,21 @@ int main(int argc, char** argv)
 
     LidarOdometry LO(node_LO);
     TransformFusion TF(node_TF);
+
+    // if(!LO.loopClosureEnableFlag){
+    //     tum_file.open("/home/sdu/slam_time/rolo/rolo_front.tum");
+    // }
+    // else{
+    //     tum_file.open("/home/sdu/slam_time/rolo_lc/rolo_lc_front.tum");
+    // }
+    // tum_file.clear();
     
     rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(node_LO);
     executor.add_node(node_TF);
     RCLCPP_INFO(node_LO->get_logger(), "\033[1;32m----> Laser Odometry Started.\033[0m");
     executor.spin();
+    // tum_file.close();
     
     return 0;
 }

@@ -16,6 +16,8 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CloudInfoStamp.msg"
+  "msg/CloudInfo.msg"
+  "msg/Slope.msg"
   DEPENDENCIES geometry_msgs nav_msgs std_msgs sensor_msgs
 )
 

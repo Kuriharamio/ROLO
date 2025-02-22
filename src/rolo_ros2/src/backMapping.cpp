@@ -14,7 +14,10 @@
 #include <gtsam/inference/Symbol.h>
 
 #include <gtsam/nonlinear/ISAM2.h>
-// #include <ros/package.h>
+
+#include <GeographicLib/Geocentric.hpp>
+#include <GeographicLib/LocalCartesian.hpp>
+#include <GeographicLib/Geoid.hpp>
 
 using namespace gtsam;
 
@@ -45,6 +48,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRPYT,
                                    (double, time, time))
 
 typedef PointXYZIRPYT  PointTypePose;
+// ofstream back_tum_file;
 
 class backMapping : public ParamLoader
 {
@@ -71,14 +75,24 @@ public:
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubLoopConstraintEdge;
 
     rclcpp::Publisher<rolo_ros2_interfaces::msg::CloudInfoStamp>::SharedPtr pubSLAMInfo;;
+    rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr pubLocalGPS;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pubSlopeMarker;
 
     rclcpp::Subscription<rolo_ros2_interfaces::msg::CloudInfoStamp>::SharedPtr subCloud;
-    // rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subGPS;
-    // rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr subLoop;
+    rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr subGPS;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr subLoop;
+    rclcpp::Subscription<rolo_ros2_interfaces::msg::Slope>::SharedPtr subSlope;
 
     // rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srvSaveMap;
 
-    std::deque<nav_msgs::msg::Odometry> gpsQueue;
+    // Eigen::Affine3f transGPS;
+    // Eigen::Vector3d transLLA;
+    Eigen::Vector3d originLLA;
+    // bool gpsAvialble = false;
+    bool systemInitialized = false;
+    bool gpsTransfromInit = false;
+    GeographicLib::LocalCartesian geo_converter;
+    std::deque<sensor_msgs::msg::NavSatFix> gpsQueue;
     rolo_ros2_interfaces::msg::CloudInfoStamp cloudInfo;
 
     vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;   // 所有关键帧的角点集合（降采样）
@@ -126,9 +140,30 @@ public:
     double timeLaserInfoCur;
 
     float transformTobeMapped[6];   // 全局雷达里程计位姿，初始值均为0，[roll, pitch, yaw, x, y, z]
+    float slopePoseLast[6];
+    float slopePoseCur[6];
+
+    float slopeCur;
+    float temp_slope;
+    Eigen::Vector3f slope_pos;
+    Eigen::Vector3f temp_slope_pos;
+
+    Eigen::Vector3f slope_global_pos;
+    visualization_msgs::msg::Marker slopeMarker;
+
+    visualization_msgs::msg::MarkerArray slopeFactorMarkers;
+    
+    bool firstFlag;
+    bool passFlag;
+    int countSlopeNum;
+
+    long int slopeFactorLast;
+    long int slopeFactorCur;
+    double slopeAngle;
 
     std::mutex mtx;
     std::mutex mtxLoopInfo;
+    std::mutex mtxGpsInfo;
 
     bool isDegenerate = false;
     cv::Mat matP;
@@ -163,9 +198,14 @@ public:
         pubLaserOdometryGlobal = node->create_publisher<nav_msgs::msg::Odometry> ("rolo/mapping/odometry", 1); // 里程计
         pubLaserOdometryIncremental = node->create_publisher<nav_msgs::msg::Odometry> ("rolo/mapping/odometry_incremental", 1); 
         pubPath = node->create_publisher<nav_msgs::msg::Path>("rolo/mapping/path", 1); // 全局路径
+        pubSlopeMarker = node->create_publisher<visualization_msgs::msg::Marker>("slopeMarker", 10);
         // Feature extration传过来的cloud_info
         subCloud = node->create_subscription<rolo_ros2_interfaces::msg::CloudInfoStamp>(odomTopic+"/cloud_info", 1, std::bind(&backMapping::laserCloudInfoHandler, this, std::placeholders::_1));
-
+        subSlope = node->create_subscription<rolo_ros2_interfaces::msg::Slope>(slopeTopic, 50, std::bind(&backMapping::slopeHandler, this, std::placeholders::_1));
+        if(useGPS){
+            pubLocalGPS = node->create_publisher<sensor_msgs::msg::NavSatFix>("rolo/mapping/odometry_gps", 1); // 全局路径
+            subGPS = node->create_subscription<sensor_msgs::msg::NavSatFix>(gpsTopic, 1, std::bind(&backMapping::gpsHandler, this, std::placeholders::_1));
+        }
         // 回环数据
         // subLoop  = node->create_subscription<std_msgs::msg::Float64MultiArray>("lio_loop/loop_closure_detection", 1, std::bind(&backMapping::loopInfoHandler, this, std::placeholders::_1));
 
@@ -308,8 +348,49 @@ public:
         }
 
         matP = cv::Mat(6, 6, CV_32F, cv::Scalar::all(0));
-    }
 
+        slopeMarker.header.frame_id = "map";
+        slopeMarker.id = 0;
+        slopeMarker.type = slopeMarker.SPHERE;
+        slopeMarker.color.a = 1.0;
+        slopeMarker.color.r= 1.0;
+        slopeMarker.scale.x = 0.8;
+        slopeMarker.scale.y = 0.8;
+        slopeMarker.scale.z = 0.8;
+
+        
+        slopeAngle = 0.0;
+        firstFlag = true;
+        passFlag = false;
+        countSlopeNum = 0;
+    }
+    void gpsHandler(const sensor_msgs::msg::NavSatFix::SharedPtr gpsMsg) {
+        if(!systemInitialized && gpsMsg->status.status != gpsMsg->status.STATUS_NO_FIX)
+            mtxGpsInfo.lock();
+            gpsQueue.push_back(*gpsMsg);
+            mtxGpsInfo.unlock();
+    }
+    void slopeHandler(const rolo_ros2_interfaces::msg::Slope::SharedPtr slope)
+    {
+        if(slope->slope.data>maxAngle)
+        {
+            temp_slope = maxAngle/180*3.1415926;
+        }
+        else if(slope->slope.data<minAngle)
+        {
+            temp_slope = minAngle/180*3.1415926;
+        }
+        else
+        {
+            temp_slope = slope->slope.data/180*3.1415926;
+        }
+        // temp_slope = -temp_slope;
+        slope_pos(0) = slope->slope_pos.x;
+        slope_pos(1) = slope->slope_pos.y;
+        slope_pos(2) = slope->slope_pos.z+sensorHeight;//1.1942
+        RCLCPP_INFO(node->get_logger(), "slope pose 2:%f",slope_pos(2));
+        // slope_pos(0) = s
+    }
     //! 激光回调函数，
     void laserCloudInfoHandler(const rolo_ros2_interfaces::msg::CloudInfoStamp::SharedPtr msgIn){
         RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter laserCloudInfoHandler\033[0m");
@@ -325,6 +406,7 @@ public:
         *laserCloudSurfLast += *laserCloudNormalLast;
 
         std::lock_guard<std::mutex> lock(mtx);
+        auto b_start = std::chrono::system_clock::now();
 
         static double timeLastProcessing = -1;
         // 当时间间隔大于阈值时，才进行后端优化
@@ -334,20 +416,37 @@ public:
             timeLastProcessing = timeLaserInfoCur;
             // 根据前端匹配结果，得到当前时刻的先验位姿估计
             updateInitialGuess();
-            // 提取周围的关键帧，并提取其角点和平面点
-            extractSurroundingKeyFrames();
-            // 对当前帧的平面点和角点进行降采样
-            downsampleCurrentScan();
-            // 对周围关键帧寻找有效的点线约束和点面约束，构建非线性问题，优化位姿，并于imu数据融合
-            scan2MapOptimization();
-            // 添加因子，全局优化，保存最优状态估计及其对应的特征点
-            saveKeyFramesAndFactor();
-            // 发生回环后，对历史上所有状态进行重新赋值
-            correctPoses();
-            // 发布全局位姿odom和变换关系的odom(incremental),同时发布全局TF
-            publishOdometry();
-            // 发布相关的点云话题
-            publishFrames();
+            if (systemInitialized) {
+                // 提取周围的关键帧，并提取其角点和平面点
+                extractSurroundingKeyFrames();
+                // 对当前帧的平面点和角点进行降采样
+                downsampleCurrentScan();
+                // 对周围关键帧寻找有效的点线约束和点面约束，构建非线性问题，优化位姿，并于imu数据融合
+                scan2MapOptimization();
+                // 添加因子，全局优化，保存最优状态估计及其对应的特征点
+                saveKeyFramesAndFactor();
+                // 发生回环后，对历史上所有状态进行重新赋值
+                correctPoses();
+                // 发布全局位姿odom和变换关系的odom(incremental),同时发布全局TF
+                publishOdometry();
+                // 发布相关的点云话题
+                publishFrames();
+
+                // 保存后端处理时间
+                auto b_end = std::chrono::system_clock::now();
+                std::chrono::duration<double> r_elapsed_seconds = b_end - b_start;
+                // 保存前段时间消耗
+                // 得到全局地图点数
+                size_t global_map_size = 0;
+                for (int i = 0; i < (int)cloudKeyPoses3D->size(); ++i){
+                    global_map_size += cornerCloudKeyFrames[cloudKeyPoses3D->points[i].intensity]->size();
+                    global_map_size += surfCloudKeyFrames[cloudKeyPoses3D->points[i].intensity]->size();
+                }
+
+                // back_tum_file << setprecision(19) << timeLaserInfoCur << " " 
+                //     << r_elapsed_seconds.count() * 1000 << " "
+                //     << global_map_size << std::endl;
+            }
         }
         RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave laserCloudInfoHandler\033[0m");
     }
@@ -363,11 +462,50 @@ public:
         // 初始化过程
         if (cloudKeyPoses3D->points.empty())
         {
-            // 来自前端Odometry数据的估计姿态
-            transformTobeMapped[0] = 0.0;
-            transformTobeMapped[1] = 0.0;
-            transformTobeMapped[2] = 0.0;
-            return;
+            systemInitialized = false;
+            if(useGPS){
+                RCLCPP_INFO(node->get_logger(), "GPS use to init pose");
+                /** when you align gnss and lidar timestamp, make sure (1.0/gpsFrequence) is small encougn
+                 *  no need to care about the real gnss frquency. time alignment fail will cause
+                 *  "[ERROR] [1689196991.604771416]: sysyem need to be initialized"
+                 * */
+                sensor_msgs::msg::NavSatFix alignedGPS;
+                if(gpsQueue.empty()){
+                    return;
+                }
+                // alignedGPS = gpsQueue.front();
+                if (syncGPS(gpsQueue, alignedGPS, timeLaserInfoCur, 1.0 / gpsPublishFreq)) {
+                    /** we store the origin wgs84 coordinate points in covariance[1]-[3] */
+                    originLLA.setIdentity();
+                    originLLA = Eigen::Vector3d(alignedGPS.latitude,
+                                                alignedGPS.longitude,
+                                                alignedGPS.altitude);
+                    /** set your map origin points */
+                    geo_converter.Reset(originLLA[0], originLLA[1], originLLA[2]);
+                    // WGS84->ENU, must be (0,0,0)
+                    // std::cout << "GPS Position: " << enu.transpose() << std::endl;
+                    std::cout << "GPS LLA: " << originLLA.transpose() << std::endl;
+
+                    systemInitialized = true;
+                    RCLCPP_WARN(node->get_logger(), "GPS init success");
+                }
+                // 来自前端Odometry数据的估计姿态
+                transformTobeMapped[0] = 0.0;
+                transformTobeMapped[1] = 0.0;
+                transformTobeMapped[2] = 0.0;
+                return;
+            }else{
+                // 来自前端Odometry数据的估计姿态
+                transformTobeMapped[3] = initPose[0];
+                transformTobeMapped[4] = initPose[1];
+                transformTobeMapped[5] = initPose[2];
+
+                transformTobeMapped[0] = initPose[3];
+                transformTobeMapped[1] = initPose[4];
+                transformTobeMapped[2] = initPose[5];
+                systemInitialized = true;
+                return;
+            }
         }
 
         // use LiDAR odometry estimation for pose guess
@@ -392,6 +530,37 @@ public:
                 return;
             }
         }
+    }
+
+    bool syncGPS(std::deque<sensor_msgs::msg::NavSatFix> &gpsBuf,
+                 sensor_msgs::msg::NavSatFix &aligedGps, double timestamp,
+                 double eps_cam) {
+        bool hasGPS = false;
+        while (!gpsQueue.empty()) {
+            mtxGpsInfo.lock();
+            if (gpsQueue.front().header.stamp.sec + gpsQueue.front().header.stamp.nanosec * 1e-9 < timestamp - eps_cam) {
+                // message too old
+                gpsQueue.pop_front();
+                mtxGpsInfo.unlock();
+            } else if (gpsQueue.front().header.stamp.sec + gpsQueue.front().header.stamp.nanosec * 1e-9 > timestamp + eps_cam) {
+                // message too new
+                mtxGpsInfo.unlock();
+                break;
+            } else {
+                hasGPS = true;
+                aligedGps = gpsQueue.front();
+                gpsQueue.pop_front();
+//                if (debugGps)
+//                    ROS_INFO("GPS time offset %f ",
+//                             aligedGps.header.stamp.toSec() - timestamp);
+                mtxGpsInfo.unlock();
+            }
+        }
+
+        if (hasGPS)
+            return true;
+        else
+            return false;
     }
 
     //! 提取周围的关键帧，同时提取其角点和平面点
@@ -549,7 +718,199 @@ public:
             RCLCPP_WARN(node->get_logger(), "Not enough features! Only %d edge and %d planar features available.", laserCloudCornerLastDSNum, laserCloudSurfLastDSNum);
         }
     }
+    void calDisCur2Slope()
+    {
+        if(firstFlag)
+        {
+            passFlag = false;
+            return;
+        }
+        // ROS_INFO("transformAftMapped:%f,%f,%f",transformAftMapped[5],transformAftMapped[3],transformAftMapped[4]);
+        // ROS_INFO("PoseFrom:%f,%f,%f",slopePoseLast[5], slopePoseLast[3], slopePoseLast[4]);
+                        // (slopePoseCur[4]- transformAftMapped[4])*(slopePoseCur[4]- transformAftMapped[4])+
 
+        // ROS_INFO("PoseTo:%f,%f,%f",slopePoseCur[5], slopePoseCur[3], slopePoseCur[4]);
+        if(sqrt((slopePoseCur[3]- transformTobeMapped[4])*(slopePoseCur[3]- transformTobeMapped[4])+
+                (slopePoseCur[5]- transformTobeMapped[3])*(slopePoseCur[5]- transformTobeMapped[3])) < slopeDisThre)
+        {
+            RCLCPP_INFO(node->get_logger(), "Passing!!!!!");
+            passFlag = true;
+        }
+        else{
+            passFlag = false;
+        }
+    }
+    void slopeThread()
+    {
+        rclcpp::Rate rate1hz(1);
+        while (rclcpp::ok())
+        {
+            countSlopeNum++;
+            rate1hz.sleep();
+            if(countSlopeNum==interTime)
+            {
+                RCLCPP_INFO(node->get_logger(), "Find new slope");
+                countSlopeNum = 0;
+                firstFlag = true;
+                slopeAngle = 0.0;
+            }    
+        }
+        
+    }
+    void addSlopeFactor()
+    {
+        // ROS_INFO("Here!!!!!");
+        calDisCur2Slope();
+        // if(firstFlag==false)
+        //     firstFlag = ifNoMotion();
+        // Update the global slope pose
+        if(passFlag==true)
+        {
+            countSlopeNum = 0;
+            slopeAngle+=slopeCur;
+
+            slopeFactorCur = cloudKeyPoses3D->points.size();
+            // TODO: ADD Slope factor
+            transformTobeMapped[1] = slopeAngle;
+            // ROS_INFO("transform 4:%f, slopePoseCur 4:%f",transformAftMapped[4], slopePoseCur[4]);
+            transformTobeMapped[5] = slopePoseCur[4];
+            if(fabs(slopeAngle)<plainThre/180*3.1415926)
+            {
+                slopeAngle = 0.0;
+            }
+
+            gtsam::Pose3 poseTo   = Pose3(Rot3::RzRyRx(transformTobeMapped[0], slopeAngle, transformTobeMapped[2]),
+                                                Point3(transformTobeMapped[3],transformTobeMapped[4],transformTobeMapped[5]));
+            gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back());
+            noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
+
+            gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->points.size()-1, cloudKeyPoses3D->points.size(), poseFrom.between(poseTo), odometryNoise));
+            initialEstimate.insert(cloudKeyPoses3D->points.size(), Pose3(Rot3::RzRyRx(transformTobeMapped[0], slopeAngle, transformTobeMapped[2]),
+                                            Point3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5])));
+            isam->update(gtSAMgraph, initialEstimate);
+            isam->update();
+
+            gtSAMgraph.resize(0);
+            initialEstimate.clear();
+
+
+
+            // ROS_INFO("last slope[0]:%f,temp angle%f",slopePoseLast[0], slopeAngle);
+            // // update the robot pose
+
+            // ROS_INFO("PoseFrom:%f,%f,%f",slopePoseLast[5], slopePoseLast[3], slopePoseLast[4]);
+            // ROS_INFO("PoseTo:%f,%f,%f",transformAftMapped[5],transformAftMapped[3],transformAftMapped[4]);
+            // ROS_INFO("%lf",slopePoseLast[0]);
+            poseFrom = Pose3(Rot3::RzRyRx(slopePoseLast[2], slopePoseLast[0], slopePoseLast[1]),
+                                Point3(slopePoseLast[5], slopePoseLast[3], slopePoseLast[4]));
+            gtSAMgraph.add(BetweenFactor<Pose3>(slopeFactorLast, slopeFactorCur, poseFrom.between(poseTo), odometryNoise));
+            slopeFactorLast = slopeFactorCur;
+            // ROS_INFO("Slope Cur is %lf",slopeCur);
+            
+            // ROS_INFO("Slope Angle is %lf",slopeAngle);
+            // TODO: Visualize the Slope factor
+
+
+            isam->update(gtSAMgraph, initialEstimate);
+            isam->update();
+
+            gtSAMgraph.resize(0);
+            initialEstimate.clear();
+
+            // isam->update(gtSAMgraph, initialEstimate);
+            // isam->update();
+            
+            // gtSAMgraph.resize(0);
+            // initialEstimate.clear();
+            float tempR,tempP,tempY,tempx,tempy,tempz;
+            tempR = transformTobeMapped[0];
+            tempP = slopeAngle;
+            tempY = transformTobeMapped[2];
+            tempy = transformTobeMapped[4];
+            tempz = transformTobeMapped[5];
+            tempx = transformTobeMapped[3];
+            Eigen::Vector3f tempTrans;
+            tempTrans<<tempx,tempy,tempz;
+            Eigen::Matrix3f tempRoX,tempRoY,tempRoZ,tempRo;
+            tempRoZ<<cos(tempY),-sin(tempY),0,sin(tempY),cos(tempY),0,0,0,1;
+            tempRoY<<cos(tempP),0,sin(tempP),0,1,0,-sin(tempP),0,cos(tempP);
+            tempRoX<<1,0,0,0,cos(tempR),-sin(tempR),0,sin(tempR),cos(tempR);
+            tempRo = tempRoZ*tempRoY*tempRoX;
+            // tempRo<<cos(tempY)*cos(tempP),cos(tempY)*sin(tempR)*sin(tempP)-sin(tempY)*cos(tempR),
+            temp_slope_pos = slope_pos;
+            // temp_slope_pos(2) -= 1.1942;
+            // RO pose
+            slope_global_pos = tempRo*temp_slope_pos+tempTrans;
+            // slope_global_pos(2) +=1.1942;
+            // ROS_INFO(" Slope_pos is %lf,%lf,%lf",slope_pos(0),slope_pos(1),slope_pos(2));
+            // ROS_INFO("tempx %f,tempy %f,tempz %f",tempx,tempy,tempz);
+            slopeMarker.pose.position.x = slope_global_pos(0);
+            slopeMarker.pose.position.y = slope_global_pos(1);
+            slopeMarker.pose.position.z = slope_global_pos(2);
+
+            
+            pubSlopeMarker->publish(slopeMarker);
+            // ROS_INFO("Global Slope_pos is %lf,%lf,%lf",slope_global_pos(0),slope_global_pos(1),slope_global_pos(2));
+            
+            
+            slopePoseLast[0] = slopeAngle;
+            slopePoseLast[1] = transformTobeMapped[2];
+            slopePoseLast[2] = transformTobeMapped[0];
+            slopePoseLast[3] = transformTobeMapped[4];
+            slopePoseLast[4] = transformTobeMapped[5];
+            slopePoseLast[5] = transformTobeMapped[3];
+            slopeCur = temp_slope;
+
+            slopePoseCur[3] = slope_global_pos(1);
+            slopePoseCur[4] = slope_global_pos(2);
+            slopePoseCur[5] = slope_global_pos(0);
+            
+            // ROS_INFO("slope pose cur is %f, %f, %f",slopePoseCur[5],slopePoseCur[3],slopePoseCur[4]);
+        }
+
+        // TODO: Detect the robot pass by the position
+        if(firstFlag)
+        {
+            slopeFactorLast = cloudKeyPoses3D->points.size();
+            slopePoseLast[0] = transformTobeMapped[1];
+            slopePoseLast[1] = transformTobeMapped[2];
+            slopePoseLast[2] = transformTobeMapped[0];
+            slopePoseLast[3] = transformTobeMapped[4];
+            slopePoseLast[4] = transformTobeMapped[5];
+            slopePoseLast[5] = transformTobeMapped[3];
+
+            float tempR,tempP,tempY,tempx,tempy,tempz;
+            tempR = transformTobeMapped[0];
+            tempP = 0.0;
+            tempY = transformTobeMapped[2];
+            tempy = transformTobeMapped[4];
+            tempz = transformTobeMapped[5];
+            tempx = transformTobeMapped[3];
+            Eigen::Vector3f tempTrans;
+            tempTrans<<tempx,tempy,tempz;
+            Eigen::Matrix3f tempRoX,tempRoY,tempRoZ,tempRo;
+            tempRoZ<<cos(tempY),-sin(tempY),0,sin(tempY),cos(tempY),0,0,0,1;
+            tempRoY<<cos(tempP),0,sin(tempP),0,1,0,-sin(tempP),0,cos(tempP);
+            tempRoX<<1,0,0,0,cos(tempR),-sin(tempR),0,sin(tempR),cos(tempR);
+            tempRo = tempRoZ*tempRoY*tempRoX;
+            // tempRo<<cos(tempY)*cos(tempP),cos(tempY)*sin(tempR)*sin(tempP)-sin(tempY)*cos(tempR),
+            slope_global_pos = tempRo*slope_pos+tempTrans;
+            // ROS_INFO(" Slope_pos is %lf,%lf,%lf",slope_pos(0),slope_pos(1),slope_pos(2));
+            // ROS_INFO("tempx %f,tempy %f,tempz %f",tempx,tempy,tempz);
+            slopeMarker.pose.position.x = slope_global_pos(0);
+            slopeMarker.pose.position.y = slope_global_pos(1);
+            slopeMarker.pose.position.z = slope_global_pos(2);
+            slopeCur = temp_slope;
+
+            slopePoseCur[3] = slope_global_pos(1);
+            slopePoseCur[4] = slope_global_pos(2);
+            slopePoseCur[5] = slope_global_pos(0);
+            pubSlopeMarker->publish(slopeMarker);
+            RCLCPP_INFO(node->get_logger(), "Global Slope_pos is %lf,%lf,%lf",slope_global_pos(0),slope_global_pos(1),slope_global_pos(2));
+            firstFlag = false;
+
+        }
+    }
     //! 更新位姿变换矩阵
     void updatePointAssociateToMap()
     {
@@ -939,6 +1300,7 @@ public:
 
         // odom factor
         // 如果是初始则添加第一个先验因子，否则，添加k-1到k帧的里程计因子
+        addSlopeFactor();
         addOdomFactor();
 
         // loop factor
@@ -974,22 +1336,45 @@ public:
         latestEstimate = isamCurrentEstimate.at<Pose3>(isamCurrentEstimate.size()-1);
         // cout << "****************************************************" << endl;
         // isamCurrentEstimate.print("Current estimate: ");
-        // 保存当前时刻的状态最优估计到cloudKeyPoses3D
-        thisPose3D.x = latestEstimate.translation().x();
-        thisPose3D.y = latestEstimate.translation().y();
-        thisPose3D.z = latestEstimate.translation().z();
-        thisPose3D.intensity = cloudKeyPoses3D->size(); // this can be used as index
-        cloudKeyPoses3D->push_back(thisPose3D);
-        // 保存当前时刻的状态最优估计到cloudKeyPoses6D
-        thisPose6D.x = thisPose3D.x;
-        thisPose6D.y = thisPose3D.y;
-        thisPose6D.z = thisPose3D.z;
-        thisPose6D.intensity = thisPose3D.intensity ; // this can be used as index
-        thisPose6D.roll  = latestEstimate.rotation().roll();
-        thisPose6D.pitch = latestEstimate.rotation().pitch();
-        thisPose6D.yaw   = latestEstimate.rotation().yaw();
-        thisPose6D.time = timeLaserInfoCur;
-        cloudKeyPoses6D->push_back(thisPose6D);
+        if(!passFlag)
+        {
+            // 保存当前时刻的状态最优估计到cloudKeyPoses3D
+            thisPose3D.x = latestEstimate.translation().x();
+            thisPose3D.y = latestEstimate.translation().y();
+            thisPose3D.z = transformTobeMapped[5];
+            thisPose3D.intensity = cloudKeyPoses3D->size(); // this can be used as index
+            cloudKeyPoses3D->push_back(thisPose3D);
+            // 保存当前时刻的状态最优估计到cloudKeyPoses6D
+            thisPose6D.x = thisPose3D.x;
+            thisPose6D.y = thisPose3D.y;
+            thisPose6D.z = thisPose3D.z;
+            thisPose6D.intensity = thisPose3D.intensity ; // this can be used as index
+            thisPose6D.roll  = latestEstimate.rotation().roll();
+            thisPose6D.pitch = 0.5*slopeAngle+0.5*latestEstimate.rotation().pitch();
+            thisPose6D.yaw   = latestEstimate.rotation().yaw();
+            thisPose6D.time = timeLaserInfoCur;
+            cloudKeyPoses6D->push_back(thisPose6D);
+        }
+        else
+        {
+            // 保存当前时刻的状态最优估计到cloudKeyPoses3D
+            thisPose3D.x = latestEstimate.translation().x();
+            thisPose3D.y = latestEstimate.translation().y();
+            thisPose3D.z =transformTobeMapped[5];
+            thisPose3D.intensity = cloudKeyPoses3D->size(); // this can be used as index
+            cloudKeyPoses3D->push_back(thisPose3D);
+            // 保存当前时刻的状态最优估计到cloudKeyPoses6D
+            thisPose6D.x = thisPose3D.x;
+            thisPose6D.y = thisPose3D.y;
+            thisPose6D.z = thisPose3D.z;
+            thisPose6D.intensity = thisPose3D.intensity ; // this can be used as index
+            thisPose6D.roll  = latestEstimate.rotation().roll();
+            thisPose6D.pitch =slopeAngle;
+            thisPose6D.yaw   = latestEstimate.rotation().yaw();
+            thisPose6D.time = timeLaserInfoCur;
+            cloudKeyPoses6D->push_back(thisPose6D);
+            correctPosesSlope();
+        }
 
         // cout << "****************************************************" << endl;
         // cout << "Pose covariance:" << endl;
@@ -999,12 +1384,32 @@ public:
 
         // save updated transform
         // 保存到全局位姿
-        transformTobeMapped[0] = latestEstimate.rotation().roll();
-        transformTobeMapped[1] = latestEstimate.rotation().pitch();
-        transformTobeMapped[2] = latestEstimate.rotation().yaw();
-        transformTobeMapped[3] = latestEstimate.translation().x();
-        transformTobeMapped[4] = latestEstimate.translation().y();
-        transformTobeMapped[5] = latestEstimate.translation().z();
+        if(!passFlag)
+        {
+            transformTobeMapped[0] = latestEstimate.rotation().roll();
+            transformTobeMapped[1] =0.5*slopeAngle+0.5*latestEstimate.rotation().pitch();
+            transformTobeMapped[2] = latestEstimate.rotation().yaw();
+            transformTobeMapped[3] = latestEstimate.translation().x();
+            transformTobeMapped[4] = latestEstimate.translation().y();
+            if(fabs(transformTobeMapped[5] - latestEstimate.translation().z())<0.5)
+            {
+                 transformTobeMapped[5] = latestEstimate.translation().z();
+            }
+            else
+            {
+                 transformTobeMapped[5] = (latestEstimate.translation().z()+transformTobeMapped[5])/2;
+            }
+           
+        }
+        else
+        {
+            transformTobeMapped[0] = latestEstimate.rotation().roll();
+            transformTobeMapped[1] = slopeAngle;
+            transformTobeMapped[2] = latestEstimate.rotation().yaw();
+            transformTobeMapped[3] = latestEstimate.translation().x();
+            transformTobeMapped[4] = latestEstimate.translation().y();
+            transformTobeMapped[5] = latestEstimate.translation().z();
+        }
 
         // save all the received edge and surf points
         pcl::PointCloud<PointType>::Ptr thisCornerKeyFrame(new pcl::PointCloud<PointType>());
@@ -1021,6 +1426,23 @@ public:
         // 更新path，可视化
         updatePath(thisPose6D);
     }
+    void correctPosesSlope(){
+
+            // update key poses
+            int numPoses = isamCurrentEstimate.size();
+            for (int i = slopeFactorLast; i < slopeFactorLast-1; ++i){
+                cloudKeyPoses3D->points[i].x = isamCurrentEstimate.at<Pose3>(i).translation().y();
+                cloudKeyPoses3D->points[i].y = isamCurrentEstimate.at<Pose3>(i).translation().z();
+                cloudKeyPoses3D->points[i].z = isamCurrentEstimate.at<Pose3>(i).translation().x();
+
+                cloudKeyPoses6D->points[i].x = cloudKeyPoses3D->points[i].x;
+                cloudKeyPoses6D->points[i].y = cloudKeyPoses3D->points[i].y;
+                cloudKeyPoses6D->points[i].z = cloudKeyPoses3D->points[i].z;
+                cloudKeyPoses6D->points[i].roll  = isamCurrentEstimate.at<Pose3>(i).rotation().pitch();
+                cloudKeyPoses6D->points[i].pitch = isamCurrentEstimate.at<Pose3>(i).rotation().yaw();
+                cloudKeyPoses6D->points[i].yaw   = isamCurrentEstimate.at<Pose3>(i).rotation().roll();
+            }
+    }
 
     //! 如果是初始则添加第一个先验因子，否则，添加k-1到k帧的里程计因子
     void addOdomFactor()
@@ -1034,13 +1456,17 @@ public:
             // 加入Value保存
             initialEstimate.insert(0, trans2gtsamPose(transformTobeMapped));
         }else{
-            noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
-            gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back());
-            gtsam::Pose3 poseTo   = trans2gtsamPose(transformTobeMapped);
-            // 添加一个从k-1帧到k帧的里程计因子
-            gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size()-1, cloudKeyPoses3D->size(), poseFrom.between(poseTo), odometryNoise));
-            // 将当前位姿存入Value
-            initialEstimate.insert(cloudKeyPoses3D->size(), poseTo);
+             if(!passFlag)
+             {
+                transformTobeMapped[1] =  0.5* transformTobeMapped[1]+0.5*slopeAngle;
+                noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
+                gtsam::Pose3 poseFrom = pclPointTogtsamPose3(cloudKeyPoses6D->points.back());
+                gtsam::Pose3 poseTo   = trans2gtsamPose(transformTobeMapped);
+                // 添加一个从k-1帧到k帧的里程计因子
+                gtSAMgraph.add(BetweenFactor<Pose3>(cloudKeyPoses3D->size()-1, cloudKeyPoses3D->size(), poseFrom.between(poseTo), odometryNoise));
+                // 将当前位姿存入Value
+                initialEstimate.insert(cloudKeyPoses3D->size(), poseTo);
+             }
         }
     }
 
@@ -1206,6 +1632,28 @@ public:
                 laserOdomIncremental.pose.covariance[0] = 0;
         }
         pubLaserOdometryIncremental->publish(laserOdomIncremental);
+
+        if(useGPS){
+            /** we transform the  ENU point to LLA point for visualization with rviz_satellite*/
+            Eigen::Vector3d curr_point(cloudKeyPoses6D->back().x,
+                                        cloudKeyPoses6D->back().y,
+                                        cloudKeyPoses6D->back().z);
+            Eigen::Vector3d curr_lla;
+            // ENU->LLA
+            geo_converter.Reverse(curr_point[0], curr_point[1], curr_point[2], curr_lla[0], curr_lla[1],
+                                    curr_lla[2]);
+            //                std::cout << std::setprecision(9)
+            //                          << "CURR LLA: " << originLLA.transpose() << std::endl;
+            //                std::cout << std::setprecision(9)
+            //                          << "update LLA: " << curr_lla.transpose() << std::endl;
+            sensor_msgs::msg::NavSatFix fix_msgs;
+            fix_msgs.header.stamp = rclcpp::Time(static_cast<int64_t>(timeLaserInfoCur * 1e9));
+            fix_msgs.header.frame_id = odometryFrame;
+            fix_msgs.latitude = curr_lla[0];
+            fix_msgs.longitude = curr_lla[1];
+            fix_msgs.altitude = curr_lla[2];
+            pubLocalGPS->publish(fix_msgs);
+        }
     }
 
     //! 发布相关的点云话题
@@ -1290,6 +1738,73 @@ public:
         // if(!saveMapService(req, res)){
         //     cout << "Fail to save map" << endl;
         // }
+    }
+
+        //! 保存角点地图，平面点地图，全局地图的service回调
+    bool saveMapService()
+    {
+      string saveMapDirectory = std::getenv("HOME") + savePCDDirectory;
+
+      cout << "****************************************************" << endl;
+      cout << "Saving map to pcd files ..." << endl;
+    //   if(req.destination.empty()) saveMapDirectory = std::getenv("HOME") + savePCDDirectory;
+    //   else saveMapDirectory = std::getenv("HOME") + req.destination;
+      cout << "Save destination: " << saveMapDirectory << endl;
+      // create directory and remove old files;
+      int unused = system((std::string("exec rm -r ") + saveMapDirectory).c_str());
+      unused = system((std::string("mkdir -p ") + saveMapDirectory).c_str());
+      // save key frame transformations
+      pcl::io::savePCDFileBinary(saveMapDirectory + "/trajectory.pcd", *cloudKeyPoses3D);
+      pcl::io::savePCDFileBinary(saveMapDirectory + "/transformations.pcd", *cloudKeyPoses6D);
+      // extract global point cloud map
+      pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
+      pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
+      pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
+      pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
+      pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
+      for (int i = 0; i < (int)cloudKeyPoses3D->size(); i++) {
+          *globalCornerCloud += *transformPointCloud(cornerCloudKeyFrames[i],  &cloudKeyPoses6D->points[i]);
+          *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],    &cloudKeyPoses6D->points[i]);
+          cout << "\r" << std::flush << "Processing feature cloud " << i << " of " << cloudKeyPoses6D->size() << " ...";
+      }
+
+    //   if(req.resolution != 0)
+    //   {
+    //     cout << "\n\nSave resolution: " << req.resolution << endl;
+
+    //     // down-sample and save corner cloud
+    //     downSizeFilterCorner.setInputCloud(globalCornerCloud);
+    //     downSizeFilterCorner.setLeafSize(req.resolution, req.resolution, req.resolution);
+    //     downSizeFilterCorner.filter(*globalCornerCloudDS);
+    //     pcl::io::savePCDFileBinary(saveMapDirectory + "/CornerMap.pcd", *globalCornerCloudDS);
+    //     // down-sample and save surf cloud
+    //     downSizeFilterSurf.setInputCloud(globalSurfCloud);
+    //     downSizeFilterSurf.setLeafSize(req.resolution, req.resolution, req.resolution);
+    //     downSizeFilterSurf.filter(*globalSurfCloudDS);
+    //     pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloudDS);
+    //   }
+    //   else
+    //   {
+        // save corner cloud
+        pcl::io::savePCDFileBinary(saveMapDirectory + "/CornerMap.pcd", *globalCornerCloud);
+        // save surf cloud
+        pcl::io::savePCDFileBinary(saveMapDirectory + "/SurfMap.pcd", *globalSurfCloud);
+    //   }
+
+      // save global point cloud map
+      *globalMapCloud += *globalCornerCloud;
+      *globalMapCloud += *globalSurfCloud;
+
+      int ret = pcl::io::savePCDFileBinary(saveMapDirectory + "/GlobalMap.pcd", *globalMapCloud);
+    //   res.success = ret == 0;
+
+    //   downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
+    //   downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
+
+      cout << "****************************************************" << endl;
+      cout << "Saving map to pcd files completed\n" << endl;
+
+      return ret == 0;
     }
 
     //! 对关键帧状态降采样，并融合特征点云组成全局地图，最后发布ROS消息
@@ -1659,16 +2174,26 @@ int main(int argc, char** argv)
     auto node = rclcpp::Node::make_shared("rolo");
     // 实例化后端优化类
     backMapping BM(node);
+    // back_tum_file.clear();
+    // if(!BM.loopClosureEnableFlag){
+    //     back_tum_file.open("/home/sdu/slam_time/rolo/rolo_back.tum");
+    // }
+    // else{
+    //     back_tum_file.open("/home/sdu/slam_time/rolo_lc/rolo_lc_back.tum");
+    // }
 
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Map Optimization Started.\033[0m");
     
     std::thread loopthread(&backMapping::loopClosureThread, &BM);
     std::thread visualizeMapThread(&backMapping::visualizeGlobalMapThread, &BM);
+    std::thread slopethread(&backMapping::slopeThread,&BM);
 
     rclcpp::spin(node);
 
     loopthread.join();
     visualizeMapThread.join();
-    BM.saveTUM();
+    slopethread.join();
+    // BM.saveTUM();
+    // back_tum_file.close();
     return 0;
 }

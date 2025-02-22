@@ -55,6 +55,7 @@ template <typename PointTarget, typename PointSource>
 void LsqRegistration<PointTarget, PointSource>::computeTranslation(PointCloudSource& output, Eigen::Vector3d& trans,
                                                                    const Eigen::Vector3d& init_guess, const Eigen::Vector3d& last_t0, 
                                                                    const double interval_tn, const double interval_tn_1, const float ct_lambda) {
+  std::cout << "1" << std::endl;
   // Eigen::Vector3d t0 = Eigen::Vector3d(trans.template cast<double>());
   Eigen::Vector3d t0 = trans;
   lm_lambda_ = -1.0;
@@ -70,12 +71,15 @@ void LsqRegistration<PointTarget, PointSource>::computeTranslation(PointCloudSou
 
     t_converged_ = is_t_converged(delta_t);
   }
-  // std::cout << "Optimized over!!" << std::endl;
+  std::cout << "Optimized over!!" << std::endl;
 
   Eigen::Affine3f final_translation;
   final_translation.matrix() = Eigen::Matrix4f::Identity();
+  std::cout << "2" << std::endl;
   final_translation.matrix().col(3).head<3>() = t0.cast<float>();
+  std::cout << "3" << std::endl;
   pcl::transformPointCloud(*input_, output, final_translation);
+  std::cout << "4" << std::endl;
   trans = t0;
 }
 

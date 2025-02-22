@@ -38,12 +38,15 @@ if (OPENMP_FOUND)
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 endif()
 
+add_subdirectory(./ThirdParty/GeographicLib/)
+
 include_directories(
 	include
 	${rclcpp_INCLUDE_DIRS}
 	${PCL_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
 	${GTSAM_INCLUDE_DIR}
+  ./ThirdParty/GeographicLib/include/
 )
 
 link_directories(
@@ -82,7 +85,11 @@ target_link_libraries(lidarOdometry ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIB
 
 add_executable(backMapping src/backMapping.cpp)
 ament_target_dependencies(backMapping rclcpp rclcpp_components geometry_msgs nav_msgs pcl_ros std_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs visualization_msgs rolo_ros2_interfaces PCL pcl_conversions OpenCV cv_bridge GTSAM Eigen3 Boost OpenMP)
-target_link_libraries(backMapping ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam)
+target_link_libraries(backMapping ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam libGeographic)
+
+add_executable(slopeEstimation src/slopeEstimation.cpp)
+ament_target_dependencies(slopeEstimation rclcpp rclcpp_components geometry_msgs nav_msgs pcl_ros std_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs visualization_msgs rolo_ros2_interfaces PCL pcl_conversions OpenCV cv_bridge GTSAM Eigen3 Boost OpenMP)
+target_link_libraries(slopeEstimation ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam libGeographic)
 
 install(TARGETS
   imageProjection
@@ -104,8 +111,14 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(TARGETS
+  slopeEstimation
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+
 install(
-  DIRECTORY src include launch param rviz
+  DIRECTORY src include launch param rviz ThirdParty
   DESTINATION share/${PROJECT_NAME}
 )
 

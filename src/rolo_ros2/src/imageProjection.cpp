@@ -76,6 +76,7 @@ private:
 
     std::string timeField; 
     int timeFlag = 0;
+    int ringFlag =0;
     float scanPeriod = 0.1;
     double odomTimeDiff = -1.0;
     float odomIncreX, odomIncreY, odomIncreZ, odomIncreRoll, odomIncrePitch, odomIncreYaw;
@@ -86,8 +87,6 @@ public:
     ImageProjection(rclcpp::Node::SharedPtr node) : ParamLoader(node)
     {
         // 输入：激光点云原数据, 前端里程计数据
-
-        // 创建订阅者
         subLaserCloud = node->create_subscription<sensor_msgs::msg::PointCloud2>(
             pointCloudTopic, 
             rclcpp::SensorDataQoS(), 
@@ -99,7 +98,7 @@ public:
         // cloud_info为从去畸变点云中提取的有效点云信息：行列数，距离和坐标，方便后续提取特征
         pubLaserCloudInfo = node->create_publisher<rolo_ros2_interfaces::msg::CloudInfoStamp>("rolo/cloud_info", 1);
         pubLaserRangeImg = node->create_publisher<sensor_msgs::msg::Image>("rolo/range_image", 1);
-        pubExtractedCloud = node->create_publisher<sensor_msgs::msg::PointCloud2>("rolo/extracted_cloud", 1);
+        pubExtractedCloud = node->create_publisher<sensor_msgs::msg::PointCloud2>("rolo/cloud_extracted", 1);
         // 重置各变量，初始化
         allocateMemory();
         resetParameters();
@@ -173,13 +172,12 @@ public:
         RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter cloudHandler\033[0m");
         // 存储点云，转换格式
         if (!cachePointCloud(laserCloudMsg)){
-            RCLCPP_INFO(node->get_logger(), "\033[1;32m Leave cloudHandler ----> \033[0m");
+            RCLCPP_ERROR(node->get_logger(), "Leave cloudHandler ---->");
             return;
         }
-
         // 从imu和imu_odom消息中推断雷达运动，为去畸变作准备
         if (!deskewCloudInfo()){
-            RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave cloudHandler\033[0m");
+            RCLCPP_ERROR(node->get_logger(), "Leave cloudHandler ---->");
             return;
         }
         // 投影到range image，去畸变
@@ -266,7 +264,6 @@ public:
 
             RCLCPP_INFO(node->get_logger(), "NaN points have been removed. Point cloud is now dense.");
         }
-        static int ringFlag =0;
         // check ring channel
         if (ringFlag == 0)
         {
@@ -279,6 +276,9 @@ public:
                     ringFlag = 1;
                     RCLCPP_WARN(node->get_logger(), "Point cloud ring field available!");
                     break;
+                }
+                else{
+                    RCLCPP_WARN(node->get_logger(), "Point cloud ring field is not available!");
                 }
             }
         }
@@ -302,9 +302,11 @@ public:
     //! 对当前点云进行去畸变操作
     bool deskewCloudInfo()
     {
+        std::cout << "1" << std::endl;
         if(deskewEnabled && odomAvailable){
             int cloudSize = laserCloudIn->points.size();
             if(timeFlag == -1){
+                RCLCPP_INFO(node->get_logger(), "No time field available!");
                 bool halfPassed = false;
                 float startOri = -atan2(laserCloudIn->points[0].y,laserCloudIn->points[0].x); 
                 float endOri   = -atan2(laserCloudIn->points[cloudSize - 1].y, laserCloudIn->points[cloudSize - 1].x) + 2 * M_PI;
@@ -364,6 +366,7 @@ public:
                 }
             }
             else{
+                RCLCPP_INFO(node->get_logger(), "点云自带时间戳");
                 // 点云自带时间戳
                 
                 PointType point;
@@ -398,6 +401,9 @@ public:
                     deskewCloud->points[i] = point;
                 }
             }
+            RCLCPP_INFO(node->get_logger(), "Process Finished");
+        }else{
+            RCLCPP_ERROR(node->get_logger(), "Did not process");
         }
         return true;
     }
@@ -449,15 +455,32 @@ public:
             if (range < lidarMinRange || range > lidarMaxRange)
                 continue;
             // 行索引为扫瞄线数
-            float angle = atan(laserCloudIn->points[i].z / sqrt(laserCloudIn->points[i].x * laserCloudIn->points[i].x + laserCloudIn->points[i].y * laserCloudIn->points[i].y)) * 180 / M_PI; // 点到基座的俯仰角，单位：degree
-            int scanID = 0;
+            // float angle = atan(laserCloudIn->points[i].z / sqrt(laserCloudIn->points[i].x * laserCloudIn->points[i].x + laserCloudIn->points[i].y * laserCloudIn->points[i].y)) * 180 / M_PI; // 点到基座的俯仰角，单位：degree
+            // int scanID = 0;
+            // // 判断一个点属于哪个线上的点，scanID为线数的序列号
+            // // scanID = int((angle + 15) / 2 + 0.5);
+            // scanID = int(angle / 3.6875);
+            // // std::cout << "point ring: " << scanID << std::endl;
+            // if (scanID > (N_SCAN - 1) || scanID < 0)
+            // {
+            //     continue;
+            // }
+
             // 判断一个点属于哪个线上的点，scanID为线数的序列号
-            // scanID = int((angle + 15) / 2 + 0.5);
-            scanID = int(angle / 3.6875);
-            // std::cout << "point ring: " << scanID << std::endl;
-            if (scanID > (N_SCAN - 1) || scanID < 0)
-            {
-                continue;
+            int scanID = 0;
+            if(ringFlag == 1){
+                scanID = laserCloudIn->points[i].ring;
+                if (scanID > (N_SCAN - 1) || scanID < 0)
+                {
+                    continue;
+                }
+            }
+            else{
+                if(!useAutoRing){
+                    RCLCPP_ERROR(node->get_logger(), "Point 'ring' field is not available, Trun param 'useAutoRing' to true!");
+                }
+                float verticalAngle = atan2(thisPoint.z, sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y)) * 180 / M_PI;
+                scanID = (verticalAngle + ang_bottom + 0.1) / ang_res_v;
             }
             int rowIdn = scanID;
             // int rowIdn = laserCloudIn->points[i].ring;
