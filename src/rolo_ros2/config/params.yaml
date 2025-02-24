@@ -3,7 +3,7 @@ rolo_ros2:
     robot_id: "roboat"
     pointCloudTopic: "/velodyne_points"
     odomTopic: "/odometry"
-    lidarFrame: "velodyne"
+    lidarFrame: "laser_link"
     baselinkFrame: "base_link"
     odometryFrame: "odometry"
     mapFrame: "map"
@@ -13,7 +13,7 @@ rolo_ros2:
     savePCDDirectory: "/Downloads/LOAM/"
     sensor: "velodyne"
 
-    N_SCAN: 16
+    N_SCAN: 32
     Horizon_SCAN: 1800
     downsampleRate: 1
     lidarMinRange: 0.1
@@ -44,7 +44,7 @@ rolo_ros2:
     surroundingKeyframeDensity: 2.0
     surroundingKeyframeSearchRadius: 50.0
 
-    loopClosureEnableFlag: false
+    loopClosureEnableFlag: true
     loopClosureFrequency: 1.0
     surroundingKeyframeSize: 50
     historyKeyframeSearchRadius: 30.0

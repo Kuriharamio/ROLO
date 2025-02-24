@@ -16,6 +16,22 @@ def generate_launch_description():
     #     description='Path to the parameter file'
     # )
 
+    tf_broadcaster = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='tf_broadcaster',
+        arguments=['0', '0', '0', '0', '0', '0', 'velodyne', 'base_link'],
+        output='screen'
+    )
+
+    rviz = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        arguments=['-d', os.path.join(get_package_share_directory(package_name), 'rviz', 'rolo_ros2.rviz')],
+        output='screen'
+    )
+
     imageProjection = Node(
         package=package_name,
         executable='imageProjection',  
@@ -62,5 +78,6 @@ def generate_launch_description():
         imageProjection,
         featureExtraction,
         lidarOdometry,
-        backMapping
+        backMapping,
+        rviz
     ])
