@@ -292,7 +292,7 @@ public:
 int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
-    auto node = rclcpp::Node::make_shared("feature_extraction");
+    auto node = std::make_shared<rclcpp::Node>("FeatureExtraction");
     FeatureExtraction FE(node);
 
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Feature Extraction Started.\033[0m");

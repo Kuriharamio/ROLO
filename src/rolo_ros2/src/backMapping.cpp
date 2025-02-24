@@ -2193,7 +2193,7 @@ public:
 int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
-    auto node = rclcpp::Node::make_shared("rolo");
+    auto node = std::make_shared<rclcpp::Node>("backMapping");
     // 实例化后端优化类
     backMapping BM(node);
     // back_tum_file.clear();

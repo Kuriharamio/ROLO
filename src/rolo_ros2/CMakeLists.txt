@@ -109,6 +109,11 @@ add_executable(lidarOdometry src/lidarOdometry.cpp)
 ament_target_dependencies(lidarOdometry rclcpp rclcpp_components geometry_msgs nav_msgs pcl_ros std_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs visualization_msgs rolo_ros2_interfaces PCL pcl_conversions OpenCV cv_bridge GTSAM Eigen3 Boost OpenMP)
 target_link_libraries(lidarOdometry ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam rot_gicp)
 
+add_executable(transformfusion src/transformfusion.cpp)
+ament_target_dependencies(transformfusion rclcpp rclcpp_components geometry_msgs nav_msgs pcl_ros std_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs visualization_msgs rolo_ros2_interfaces PCL pcl_conversions OpenCV cv_bridge GTSAM Eigen3 Boost OpenMP)
+target_link_libraries(transformfusion ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam rot_gicp)
+
+
 add_executable(backMapping src/backMapping.cpp)
 ament_target_dependencies(backMapping rclcpp rclcpp_components geometry_msgs nav_msgs pcl_ros std_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs visualization_msgs rolo_ros2_interfaces PCL pcl_conversions OpenCV cv_bridge GTSAM Eigen3 Boost OpenMP)
 target_link_libraries(backMapping ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam libGeographic)
@@ -133,6 +138,11 @@ install(TARGETS
 )
 
 install(TARGETS
+  transformfusion
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS
   backMapping
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -144,7 +154,7 @@ install(TARGETS
 
 
 install(
-  DIRECTORY src include launch param rviz ThirdParty cmake
+  DIRECTORY src include launch config rviz ThirdParty cmake
   DESTINATION share/${PROJECT_NAME}
 )
 
