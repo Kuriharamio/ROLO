@@ -55,7 +55,6 @@ template <typename PointTarget, typename PointSource>
 void LsqRegistration<PointTarget, PointSource>::computeTranslation(PointCloudSource& output, Eigen::Vector3d& trans,
                                                                    const Eigen::Vector3d& init_guess, const Eigen::Vector3d& last_t0, 
                                                                    const double interval_tn, const double interval_tn_1, const float ct_lambda) {
-  std::cout << "1" << std::endl;
   // Eigen::Vector3d t0 = Eigen::Vector3d(trans.template cast<double>());
   Eigen::Vector3d t0 = trans;
   lm_lambda_ = -1.0;
@@ -71,15 +70,12 @@ void LsqRegistration<PointTarget, PointSource>::computeTranslation(PointCloudSou
 
     t_converged_ = is_t_converged(delta_t);
   }
-  std::cout << "Optimized over!!" << std::endl;
+  // std::cout << "Optimized over!!" << std::endl;
 
   Eigen::Affine3f final_translation;
   final_translation.matrix() = Eigen::Matrix4f::Identity();
-  std::cout << "2" << std::endl;
   final_translation.matrix().col(3).head<3>() = t0.cast<float>();
-  std::cout << "3" << std::endl;
   pcl::transformPointCloud(*input_, output, final_translation);
-  std::cout << "4" << std::endl;
   trans = t0;
 }
 
@@ -91,10 +87,10 @@ bool LsqRegistration<PointTarget, PointSource>::step_t_optimize(Eigen::Vector3d&
   Eigen::Matrix<double, 6, 6> H;  // 海森矩阵
   Eigen::Matrix<double, 6, 1> b;  // 偏置
   
-  // std::cout << "x0: " << x0.matrix() << std::endl;
+  std::cout << "x0:\n " << x0.matrix() << std::endl;
   double y0 = t3_linearize(x0, init_guess, last_t0, interval_tn, interval_tn_1, &H, &b); // y0：总误差，x0：变换矩阵
-  // std::cout << "H: " << std::endl << H << std::endl;
-  // std::cout << "b: " << std::endl << b.transpose() << std::endl;
+  std::cout << "H: " << std::endl << H << std::endl;
+  std::cout << "b: " << std::endl << b.transpose() << std::endl;
 
   if (lm_lambda_ < 0.0) {
     lm_lambda_ = lm_init_lambda_factor_ * H.diagonal().array().abs().maxCoeff();

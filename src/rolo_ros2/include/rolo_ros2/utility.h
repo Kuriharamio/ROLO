@@ -70,8 +70,8 @@
 #include <cmath>  // 用于 FLT_MAX
 
 using namespace std;
-#define PI 3.14159265
-extern const int imuQueLength =200;
+// #define PI 3.14159265
+// extern const int imuQueLength =200;
 
 typedef pcl::PointXYZI PointType;
 
@@ -87,13 +87,13 @@ public:
     // Topics
     string pointCloudTopic;  // 输入的激光
     string odomTopic;
-    string gpsTopic;
-    bool useGPS;
-    float gpsPublishFreq;
+    // string gpsTopic;
+    // bool useGPS;
+    // float gpsPublishFreq;
 
     // string imuTopic;
-    string slopeTopic;
-    bool useCloudRing;
+    // string slopeTopic;
+    // bool useCloudRing;
 
     // Frames
     string lidarFrame;
@@ -116,25 +116,25 @@ public:
     float lidarNoiseBound;
     bool deskewEnabled;
 
-    bool useAutoRing;
-    float ang_res_h;
-    float ang_res_v;
-    float ang_bottom;
-    int groundScanInd;
-    float scanPeriod;
-    int systemDelay;
+    // bool useAutoRing;
+    // float ang_res_h;
+    // float ang_res_v;
+    // float ang_bottom;
+    // int groundScanInd;
+    // float scanPeriod;
+    // int systemDelay;
 
-    // const int imuQueLength;
-    float sensorMinimumRange;
-    float sensorMountAngle;
-    float segmentTheta;
-    int segmentValidPointNum;
-    int segmentValidLineNum;
-    float segmentAlphaX;
-    float segmentAlphaY;
-    int edgeFeatureNum;
-    int surfFeatureNum;
-    int sectionsTotal;
+    // // const int imuQueLength;
+    // float sensorMinimumRange;
+    // float sensorMountAngle;
+    // float segmentTheta;
+    // int segmentValidPointNum;
+    // int segmentValidLineNum;
+    // float segmentAlphaX;
+    // float segmentAlphaY;
+    // int edgeFeatureNum;
+    // int surfFeatureNum;
+    // int sectionsTotal;
 
     // LOAM
     float edgeThreshold;
@@ -163,7 +163,7 @@ public:
     float surroundingkeyframeAddingAngleThreshold;
     float surroundingKeyframeDensity;
     float surroundingKeyframeSearchRadius;
-    int surroundingKeyframeSearchNum;
+    // int surroundingKeyframeSearchNum;
 
     // Loop closure
     bool loopClosureEnableFlag;  // 回环检测使能位
@@ -179,24 +179,24 @@ public:
     float globalMapVisualizationPoseDensity;
     float globalMapVisualizationLeafSize;
 
-    float anglebias;
-    float ransac_thre;
-    std::string robotFrame;
-    float detectionXMin;
-    float detectionYMin;
-    float detectionZMin;
-    float detectionXMax;
-    float detectionYMax;
-    float detectionZMax;
-    bool saveTraj;
-    std::string filepath;
-    std::string fileDirectory;
-    int interTime;
-    float sensorHeight;
-    float minAngle;
-    float maxAngle;
-    float slopeDisThre;
-    float plainThre;
+    // float anglebias;
+    // float ransac_thre;
+    // std::string robotFrame;
+    // float detectionXMin;
+    // float detectionYMin;
+    // float detectionZMin;
+    // float detectionXMax;
+    // float detectionYMax;
+    // float detectionZMax;
+    // bool saveTraj;
+    // std::string filepath;
+    // std::string fileDirectory;
+    // int interTime;
+    // float sensorHeight;
+    // float minAngle;
+    // float maxAngle;
+    // float slopeDisThre;
+    // float plainThre;
 
     // 载入param参数
     ParamLoader(rclcpp::Node::SharedPtr node)
@@ -205,17 +205,18 @@ public:
 
         node->declare_parameter("robot_id", "roboat");
 
-        // node->declare_parameter("rolo/pointCloudTopic", "/velodyne_points");
-        node->declare_parameter("rolo/pointCloudTopic", "/livox/lidar_PointCloud2");
-        node->declare_parameter("rolo/odomTopic", "/odom");
-        node->declare_parameter("rolo/gpsTopic", "/gps/fix");
-        node->declare_parameter("rolo/slopeTopic", "/my_slope");
-        node->declare_parameter("rolo/useGPS", false);
-        node->declare_parameter("rolo/gpsPublishFreq", 1.0f);
+        node->declare_parameter("rolo/pointCloudTopic", "/velodyne_points");
+        // node->declare_parameter("rolo/pointCloudTopic", "/livox/lidar_PointCloud2");
+        // node->declare_parameter("rolo/pointCloudTopic", "/cx/lslidar_point_cloud");
+        node->declare_parameter("rolo/odomTopic", "/odometry");
+        // node->declare_parameter("rolo/gpsTopic", "/gps/fix");
+        // node->declare_parameter("rolo/slopeTopic", "/my_slope");
+        // node->declare_parameter("rolo/useGPS", true);
+        // node->declare_parameter("rolo/gpsPublishFreq", 1.0f);
         
-        node->declare_parameter("rolo/lidarFrame", "laser_link");
+        node->declare_parameter("rolo/lidarFrame", "velodyne");
         node->declare_parameter("rolo/baselinkFrame", "base_link");
-        node->declare_parameter("rolo/odometryFrame", "odom");
+        node->declare_parameter("rolo/odometryFrame", "odometry");
         node->declare_parameter("rolo/mapFrame", "map");
         node->declare_parameter("rolo/initPose", std::vector<double>({0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
 
@@ -224,59 +225,59 @@ public:
 
         node->declare_parameter("rolo/sensor", "velodyne");
 
-        node->declare_parameter("rolo/N_SCAN", 32);
-        node->declare_parameter("rolo/useCloudRing", true);
+        node->declare_parameter("rolo/N_SCAN", 16);
+        // node->declare_parameter("rolo/useCloudRing", true);
         node->declare_parameter("rolo/Horizon_SCAN", 1800);
         node->declare_parameter("rolo/downsampleRate", 1);
-        node->declare_parameter("rolo/lidarMinRange", 1.0f);
-        node->declare_parameter("rolo/lidarMaxRange", 70.0f);
+        node->declare_parameter("rolo/lidarMinRange", 0.1f);
+        node->declare_parameter("rolo/lidarMaxRange", 1000.0f);
         node->declare_parameter("rolo/lidarNoiseBound", 0.05f);
-        node->declare_parameter("rolo/deskewEnabled", true);
-        node->declare_parameter("rolo/useAutoRing", true);
-        node->declare_parameter("rolo/angResH", 0.2f);
-        node->declare_parameter("rolo/angResV", 1.84375f);
-        node->declare_parameter("rolo/angBottom", 0.0f);
-        node->declare_parameter("rolo/groundScanInd", 7);
-        node->declare_parameter("rolo/scanPeriod", 0.1f);
-        node->declare_parameter("rolo/systemDelay", 0);
-        node->declare_parameter("rolo/sensorMinimumRange", 1.0f);
-        node->declare_parameter("rolo/sensorMountAngle", 0.0f);
-        node->declare_parameter("rolo/segmentTheta", 60.0f/180.0f*M_PI);
-        node->declare_parameter("rolo/segmentValidPointNum", 5);
-        node->declare_parameter("rolo/segmentValidLineNum", 3);
-        node->declare_parameter("rolo/segmentAlphaX", node->get_parameter("rolo/angResH").as_double()/180.0*M_PI);
-        node->declare_parameter("rolo/segmentAlphaY", node->get_parameter("rolo/angResV").as_double()/180.0*M_PI);
-        node->declare_parameter("rolo/edgeFeatureNum", 4);
-        node->declare_parameter("rolo/surfFeatureNum", 8);
-        node->declare_parameter("rolo/sectionsTotal", 12);
+        node->declare_parameter("rolo/deskewEnabled", false);
+        // node->declare_parameter("rolo/useAutoRing", true);
+        // node->declare_parameter("rolo/angResH", 0.2f);
+        // node->declare_parameter("rolo/angResV", 1.84375f);
+        // node->declare_parameter("rolo/angBottom", 0.0f);
+        // node->declare_parameter("rolo/groundScanInd", 7);
+        // node->declare_parameter("rolo/scanPeriod", 0.1f);
+        // node->declare_parameter("rolo/systemDelay", 0);
+        // node->declare_parameter("rolo/sensorMinimumRange", 1.0f);
+        // node->declare_parameter("rolo/sensorMountAngle", 0.0f);
+        // node->declare_parameter("rolo/segmentTheta", 60.0f/180.0f*M_PI);
+        // node->declare_parameter("rolo/segmentValidPointNum", 5);
+        // node->declare_parameter("rolo/segmentValidLineNum", 3);
+        // node->declare_parameter("rolo/segmentAlphaX", node->get_parameter("rolo/angResH").as_double()/180.0*M_PI);
+        // node->declare_parameter("rolo/segmentAlphaY", node->get_parameter("rolo/angResV").as_double()/180.0*M_PI);
+        // node->declare_parameter("rolo/edgeFeatureNum", 4);
+        // node->declare_parameter("rolo/surfFeatureNum", 8);
+        // node->declare_parameter("rolo/sectionsTotal", 12);
 
-        node->declare_parameter("rolo/edgeThreshold", 0.1f);
+        node->declare_parameter("rolo/edgeThreshold", 0.8f);
         node->declare_parameter("rolo/surfThreshold", 0.1f);
         node->declare_parameter("rolo/nearestFeatureSearchSqDist", 25.0f);
-        node->declare_parameter("rolo/edgeFeatureMinValidNum", 10);
+        node->declare_parameter("rolo/edgeFeatureMinValidNum", 20);
         node->declare_parameter("rolo/surfFeatureMinValidNum", 100);
 
-        node->declare_parameter("rolo/odometrySurfLeafSize", 0.2f);
+        node->declare_parameter("rolo/odometrySurfLeafSize", 0.4f);
         node->declare_parameter("rolo/mappingCornerLeafSize", 0.2f);
-        node->declare_parameter("rolo/mappingSurfLeafSize", 0.2f);
+        node->declare_parameter("rolo/mappingSurfLeafSize", 0.4f);
 
-        node->declare_parameter("rolo/z_tollerance", FLT_MAX);
-        node->declare_parameter("rolo/rotation_tollerance", FLT_MAX);
+        node->declare_parameter("rolo/z_tollerance", 1000.0f);
+        node->declare_parameter("rolo/rotation_tollerance", 1000.0f);
 
-        node->declare_parameter("rolo/numberOfCores", 2);
+        node->declare_parameter("rolo/numberOfCores", 8);
         node->declare_parameter("rolo/mappingProcessInterval", 0.15f);
 
-        node->declare_parameter("rolo/continuousTrajectoryWeight", 1.0f);
+        node->declare_parameter("rolo/continuousTrajectoryWeight", 0.3f);
 
-        node->declare_parameter("rolo/surroundingkeyframeAddingDistThreshold", 1.0f);
+        node->declare_parameter("rolo/surroundingkeyframeAddingDistThreshold", 0.5f);
         node->declare_parameter("rolo/surroundingkeyframeAddingAngleThreshold", 0.2f);
-        node->declare_parameter("rolo/surroundingKeyframeDensity", 1.0f);
+        node->declare_parameter("rolo/surroundingKeyframeDensity", 2.0f);
         node->declare_parameter("rolo/surroundingKeyframeSearchRadius", 50.0f);
 
-        node->declare_parameter("rolo/loopClosureEnableFlag", true);
+        node->declare_parameter("rolo/loopClosureEnableFlag", false);
         node->declare_parameter("rolo/loopClosureFrequency", 1.0f);
         node->declare_parameter("rolo/surroundingKeyframeSize", 50);
-        node->declare_parameter("rolo/historyKeyframeSearchRadius", 10.0f);//默认值不同
+        node->declare_parameter("rolo/historyKeyframeSearchRadius", 30.0f);//默认值不同
         node->declare_parameter("rolo/historyKeyframeSearchTimeDiff", 30.0f);
         node->declare_parameter("rolo/historyKeyframeSearchNum", 25);
         node->declare_parameter("rolo/historyKeyframeFitnessScore", 0.3f);
@@ -285,43 +286,43 @@ public:
         node->declare_parameter("rolo/globalMapVisualizationPoseDensity", 10.0f);
         node->declare_parameter("rolo/globalMapVisualizationLeafSize", 1.0f);
 
-        node->declare_parameter("rolo/surroundingKeyframeSearchNum", 50);
-        node->declare_parameter("rolo/globalframe", "base_link");
-        node->declare_parameter("rolo/anglebias", 0.5f);
-        node->declare_parameter("rolo/detectionXMin", 3.0f);
-        node->declare_parameter("rolo/detectionXMax", 15.0f);
-        node->declare_parameter("rolo/detectionYMin", -1.0f);
-        node->declare_parameter("rolo/detectionYMax", 1.0f);
-        node->declare_parameter("rolo/detectionZMin", -2.0f);
-        node->declare_parameter("rolo/detectionZMax", 2.0f);
+        // node->declare_parameter("rolo/surroundingKeyframeSearchNum", 50);
+        // node->declare_parameter("rolo/globalframe", "base_link");
+        // node->declare_parameter("rolo/anglebias", 0.5f);
+        // node->declare_parameter("rolo/detectionXMin", 3.0f);
+        // node->declare_parameter("rolo/detectionXMax", 15.0f);
+        // node->declare_parameter("rolo/detectionYMin", -1.0f);
+        // node->declare_parameter("rolo/detectionYMax", 1.0f);
+        // node->declare_parameter("rolo/detectionZMin", -2.0f);
+        // node->declare_parameter("rolo/detectionZMax", 2.0f);
 
-        node->declare_parameter("rolo/saveTraj", false);
-        node->declare_parameter("rolo/filepath", "/Downloads/LOAM/trajectory.txt");
-        node->declare_parameter("rolo/fileDirectory", "/tmp/");
+        // node->declare_parameter("rolo/saveTraj", false);
+        // node->declare_parameter("rolo/filepath", "/Downloads/LOAM/trajectory.txt");
+        // node->declare_parameter("rolo/fileDirectory", "/tmp/");
 
-        node->declare_parameter("rolo/intervalTime", 7);
-        node->declare_parameter("rolo/ThresholdVTDis", 0.7);
-        node->declare_parameter("rolo/sensorHeight", 1.9);
-        node->declare_parameter("rolo/plainThre", 1.5);
-        node->declare_parameter("rolo/minAngle", -4.0);
-        node->declare_parameter("rolo/maxAngle", 4.0);
+        // node->declare_parameter("rolo/intervalTime", 7);
+        // node->declare_parameter("rolo/ThresholdVTDis", 0.7);
+        // node->declare_parameter("rolo/sensorHeight", 1.9);
+        // node->declare_parameter("rolo/plainThre", 1.5);
+        // node->declare_parameter("rolo/minAngle", -4.0);
+        // node->declare_parameter("rolo/maxAngle", 4.0);
 
         // 获取参数
         robot_id = node->get_parameter("robot_id").as_string();
 
         pointCloudTopic = node->get_parameter("rolo/pointCloudTopic").as_string();
         odomTopic = node->get_parameter("rolo/odomTopic").as_string();
-        gpsTopic = node->get_parameter("rolo/gpsTopic").as_string();
-        slopeTopic = node->get_parameter("rolo/slopeTopic").as_string();
-        useGPS = node->get_parameter("rolo/useGPS").as_bool();
-        gpsPublishFreq = node->get_parameter("rolo/gpsPublishFreq").as_double();
+        // gpsTopic = node->get_parameter("rolo/gpsTopic").as_string();
+        // slopeTopic = node->get_parameter("rolo/slopeTopic").as_string();
+        // useGPS = node->get_parameter("rolo/useGPS").as_bool();
+        // gpsPublishFreq = node->get_parameter("rolo/gpsPublishFreq").as_double();
 
         lidarFrame = node->get_parameter("rolo/lidarFrame").as_string();
         baselinkFrame = node->get_parameter("rolo/baselinkFrame").as_string();
         odometryFrame = node->get_parameter("rolo/odometryFrame").as_string();
         mapFrame = node->get_parameter("rolo/mapFrame").as_string();
         initPose = node->get_parameter("rolo/initPose").as_double_array();
-        for(int i = 3; i<initPose.size(); i++){
+        for(size_t i = 3; i<initPose.size(); i++){
             initPose[i] = initPose[i] * M_PI / 180.0;
         }
 
@@ -341,31 +342,31 @@ public:
         }
 
         N_SCAN = node->get_parameter("rolo/N_SCAN").as_int();
-        useCloudRing = node->get_parameter("rolo/useCloudRing").as_bool();
+        // useCloudRing = node->get_parameter("rolo/useCloudRing").as_bool();
         Horizon_SCAN = node->get_parameter("rolo/Horizon_SCAN").as_int();
         downsampleRate = node->get_parameter("rolo/downsampleRate").as_int();
         lidarMinRange = node->get_parameter("rolo/lidarMinRange").as_double();
         lidarMaxRange = node->get_parameter("rolo/lidarMaxRange").as_double();
         lidarNoiseBound = node->get_parameter("rolo/lidarNoiseBound").as_double();
         deskewEnabled = node->get_parameter("rolo/deskewEnabled").as_bool();
-        useAutoRing = node->get_parameter("rolo/useAutoRing").as_bool();
-        ang_res_h = node->get_parameter("rolo/angResH").as_double();
-        ang_res_v = node->get_parameter("rolo/angResV").as_double();
-        ang_bottom = node->get_parameter("rolo/angBottom").as_double();
-        groundScanInd = node->get_parameter("rolo/groundScanInd").as_int();
-        scanPeriod = node->get_parameter("rolo/scanPeriod").as_double();
-        systemDelay = node->get_parameter("rolo/systemDelay").as_int();
-        // imuQueLength = node->get_parameter("rolo/imuQueLength").as_int();
-        sensorMinimumRange = node->get_parameter("rolo/sensorMinimumRange").as_double();
-        sensorMountAngle = node->get_parameter("rolo/sensorMountAngle").as_double();
-        segmentTheta = node->get_parameter("rolo/segmentTheta").as_double();
-        segmentValidPointNum = node->get_parameter("rolo/segmentValidPointNum").as_int();
-        segmentValidLineNum = node->get_parameter("rolo/segmentValidLineNum").as_int();
-        segmentAlphaX = node->get_parameter("rolo/segmentAlphaX").as_double();
-        segmentAlphaY = node->get_parameter("rolo/segmentAlphaY").as_double();
-        edgeFeatureNum = node->get_parameter("rolo/edgeFeatureNum").as_int();
-        surfFeatureNum = node->get_parameter("rolo/surfFeatureNum").as_int();
-        sectionsTotal = node->get_parameter("rolo/sectionsTotal").as_int();
+        // useAutoRing = node->get_parameter("rolo/useAutoRing").as_bool();
+        // ang_res_h = node->get_parameter("rolo/angResH").as_double();
+        // ang_res_v = node->get_parameter("rolo/angResV").as_double();
+        // ang_bottom = node->get_parameter("rolo/angBottom").as_double();
+        // groundScanInd = node->get_parameter("rolo/groundScanInd").as_int();
+        // scanPeriod = node->get_parameter("rolo/scanPeriod").as_double();
+        // systemDelay = node->get_parameter("rolo/systemDelay").as_int();
+        // // imuQueLength = node->get_parameter("rolo/imuQueLength").as_int();
+        // sensorMinimumRange = node->get_parameter("rolo/sensorMinimumRange").as_double();
+        // sensorMountAngle = node->get_parameter("rolo/sensorMountAngle").as_double();
+        // segmentTheta = node->get_parameter("rolo/segmentTheta").as_double();
+        // segmentValidPointNum = node->get_parameter("rolo/segmentValidPointNum").as_int();
+        // segmentValidLineNum = node->get_parameter("rolo/segmentValidLineNum").as_int();
+        // segmentAlphaX = node->get_parameter("rolo/segmentAlphaX").as_double();
+        // segmentAlphaY = node->get_parameter("rolo/segmentAlphaY").as_double();
+        // edgeFeatureNum = node->get_parameter("rolo/edgeFeatureNum").as_int();
+        // surfFeatureNum = node->get_parameter("rolo/surfFeatureNum").as_int();
+        // sectionsTotal = node->get_parameter("rolo/sectionsTotal").as_int();
 
         edgeThreshold = node->get_parameter("rolo/edgeThreshold").as_double();
         surfThreshold = node->get_parameter("rolo/surfThreshold").as_double();
@@ -402,27 +403,27 @@ public:
         globalMapVisualizationPoseDensity = node->get_parameter("rolo/globalMapVisualizationPoseDensity").as_double();
         globalMapVisualizationLeafSize = node->get_parameter("rolo/globalMapVisualizationLeafSize").as_double();
 
-        surroundingKeyframeSearchNum = node->get_parameter("rolo/surroundingKeyframeSearchNum").as_int();
+        // surroundingKeyframeSearchNum = node->get_parameter("rolo/surroundingKeyframeSearchNum").as_int();
 
-        robotFrame = node->get_parameter("rolo/globalframe").as_string();
-        anglebias = node->get_parameter("rolo/anglebias").as_double();
-        detectionXMin = node->get_parameter("rolo/detectionXMin").as_double();
-        detectionXMax = node->get_parameter("rolo/detectionXMax").as_double();
-        detectionYMin = node->get_parameter("rolo/detectionYMin").as_double();
-        detectionYMax = node->get_parameter("rolo/detectionYMax").as_double();
-        detectionZMin = node->get_parameter("rolo/detectionZMin").as_double();
-        detectionZMax = node->get_parameter("rolo/detectionZMax").as_double();
+        // robotFrame = node->get_parameter("rolo/globalframe").as_string();
+        // anglebias = node->get_parameter("rolo/anglebias").as_double();
+        // detectionXMin = node->get_parameter("rolo/detectionXMin").as_double();
+        // detectionXMax = node->get_parameter("rolo/detectionXMax").as_double();
+        // detectionYMin = node->get_parameter("rolo/detectionYMin").as_double();
+        // detectionYMax = node->get_parameter("rolo/detectionYMax").as_double();
+        // detectionZMin = node->get_parameter("rolo/detectionZMin").as_double();
+        // detectionZMax = node->get_parameter("rolo/detectionZMax").as_double();
 
-        saveTraj = node->get_parameter("rolo/saveTraj").as_bool();
-        filepath = node->get_parameter("rolo/filepath").as_string();
-        fileDirectory = node->get_parameter("rolo/fileDirectory").as_string();
+        // saveTraj = node->get_parameter("rolo/saveTraj").as_bool();
+        // filepath = node->get_parameter("rolo/filepath").as_string();
+        // fileDirectory = node->get_parameter("rolo/fileDirectory").as_string();
 
-        interTime = node->get_parameter("rolo/intervalTime").as_int();
-        slopeDisThre = node->get_parameter("rolo/ThresholdVTDis").as_double();
-        sensorHeight = node->get_parameter("rolo/sensorHeight").as_double();
-        plainThre = node->get_parameter("rolo/plainThre").as_double();
-        minAngle = node->get_parameter("rolo/minAngle").as_double();
-        maxAngle = node->get_parameter("rolo/maxAngle").as_double();
+        // interTime = node->get_parameter("rolo/intervalTime").as_int();
+        // slopeDisThre = node->get_parameter("rolo/ThresholdVTDis").as_double();
+        // sensorHeight = node->get_parameter("rolo/sensorHeight").as_double();
+        // plainThre = node->get_parameter("rolo/plainThre").as_double();
+        // minAngle = node->get_parameter("rolo/minAngle").as_double();
+        // maxAngle = node->get_parameter("rolo/maxAngle").as_double();
 
 
         usleep(100);

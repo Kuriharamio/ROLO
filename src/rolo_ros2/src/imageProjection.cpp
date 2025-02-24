@@ -45,7 +45,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subLaserCloud;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subOdom;
 
-    // rclcpp::Publisher<rolo_ros2_interfaces::msg::CloudInfoStamp>::SharedPtr pubLaserCloud;
+    rclcpp::Publisher<rolo_ros2_interfaces::msg::CloudInfoStamp>::SharedPtr pubLaserCloud;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubExtractedCloud;
     rclcpp::Publisher<rolo_ros2_interfaces::msg::CloudInfoStamp>::SharedPtr pubLaserCloudInfo;
@@ -76,7 +76,7 @@ private:
 
     std::string timeField; 
     int timeFlag = 0;
-    int ringFlag =0;
+    // int ringFlag =0;
     float scanPeriod = 0.1;
     double odomTimeDiff = -1.0;
     float odomIncreX, odomIncreY, odomIncreZ, odomIncreRoll, odomIncrePitch, odomIncreYaw;
@@ -87,11 +87,7 @@ public:
     ImageProjection(rclcpp::Node::SharedPtr node) : ParamLoader(node)
     {
         // 输入：激光点云原数据, 前端里程计数据
-        subLaserCloud = node->create_subscription<sensor_msgs::msg::PointCloud2>(
-            pointCloudTopic, 
-            rclcpp::SensorDataQoS(), 
-            std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1)
-        );
+        subLaserCloud = node->create_subscription<sensor_msgs::msg::PointCloud2>(pointCloudTopic, 10, std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1));
         // subLaserCloud = node->create_subscription<sensor_msgs::msg::PointCloud2>(pointCloudTopic, 10, std::bind(&ImageProjection::cloudHandler, this, std::placeholders::_1));
         subOdom = node->create_subscription<nav_msgs::msg::Odometry>(odomTopic+"_incremental", 2000, std::bind(&ImageProjection::odometryHandler, this, std::placeholders::_1));
         // 输出：cloud_info
@@ -158,26 +154,21 @@ public:
 
     void odometryHandler(const nav_msgs::msg::Odometry::SharedPtr odomMsg)
     {
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter odometryHandler\033[0m");
         std::lock_guard<std::mutex> lock2(odomLock);
         odomQueue.push_back(*odomMsg);
         if(odomQueue.size() >= 2)
             odomAvailable = true;
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m Leave odometryHandler ---->\033[0m");
     }
 
 
     void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr laserCloudMsg)
     {
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter cloudHandler\033[0m");
         // 存储点云，转换格式
         if (!cachePointCloud(laserCloudMsg)){
-            RCLCPP_ERROR(node->get_logger(), "Leave cloudHandler ---->");
             return;
         }
         // 从imu和imu_odom消息中推断雷达运动，为去畸变作准备
         if (!deskewCloudInfo()){
-            RCLCPP_ERROR(node->get_logger(), "Leave cloudHandler ---->");
             return;
         }
         // 投影到range image，去畸变
@@ -188,7 +179,6 @@ public:
         publishClouds();
         // 重置各变量，标志位，为下一帧作准备
         resetParameters();
-        RCLCPP_INFO(node->get_logger(), "\033[1;32mLeave cloudHandler ----> \033[0m");
     }
 
     //! 对点云进行格式转换和预检查，并存储到queue
@@ -242,28 +232,29 @@ public:
         // check dense flag 检查点云有效性
         if (laserCloudIn->is_dense == false)
         {
-            // RCLCPP_ERROR(node->get_logger(), "Point cloud is not in dense format, please remove NaN points first!");
-            // rclcpp::shutdown();
-             RCLCPP_WARN(node->get_logger(), "Point cloud is not in dense format. Removing NaN points...");
+            RCLCPP_ERROR(node->get_logger(), "Point cloud is not in dense format, please remove NaN points first!");
+            rclcpp::shutdown();
+            // RCLCPP_WARN(node->get_logger(), "Point cloud is not in dense format. Removing NaN points...");
 
-            // 遍历点云，移除无效点
-            for (size_t i = 0; i < laserCloudIn->points.size(); ++i)
-            {
-                // 检查每个点是否为无效点（NaN）
-                if (std::isnan(laserCloudIn->points[i].x) || std::isnan(laserCloudIn->points[i].y) || std::isnan(laserCloudIn->points[i].z))
-                {
-                    // 将无效点替换为零点（或其他默认值）
-                    laserCloudIn->points[i].x = 0.0;
-                    laserCloudIn->points[i].y = 0.0;
-                    laserCloudIn->points[i].z = 0.0;
-                }
-            }
+            // // 遍历点云，移除无效点
+            // for (size_t i = 0; i < laserCloudIn->points.size(); ++i)
+            // {
+            //     // 检查每个点是否为无效点（NaN）
+            //     if (std::isnan(laserCloudIn->points[i].x) || std::isnan(laserCloudIn->points[i].y) || std::isnan(laserCloudIn->points[i].z))
+            //     {
+            //         // 将无效点替换为零点（或其他默认值）
+            //         laserCloudIn->points[i].x = 0.0;
+            //         laserCloudIn->points[i].y = 0.0;
+            //         laserCloudIn->points[i].z = 0.0;
+            //     }
+            // }
 
-            // 设置点云为密集格式
-            laserCloudIn->is_dense = true;
+            // // 设置点云为密集格式
+            // laserCloudIn->is_dense = true;
 
-            RCLCPP_INFO(node->get_logger(), "NaN points have been removed. Point cloud is now dense.");
+            // RCLCPP_INFO(node->get_logger(), "NaN points have been removed. Point cloud is now dense.");
         }
+        static int ringFlag =0;
         // check ring channel
         if (ringFlag == 0)
         {
@@ -277,9 +268,9 @@ public:
                     RCLCPP_WARN(node->get_logger(), "Point cloud ring field available!");
                     break;
                 }
-                else{
-                    RCLCPP_WARN(node->get_logger(), "Point cloud ring field is not available!");
-                }
+                // else{
+                //     RCLCPP_WARN(node->get_logger(), "Point cloud ring field is not available!");
+                // }
             }
         }
         // check point time field
@@ -302,7 +293,6 @@ public:
     //! 对当前点云进行去畸变操作
     bool deskewCloudInfo()
     {
-        std::cout << "1" << std::endl;
         if(deskewEnabled && odomAvailable){
             int cloudSize = laserCloudIn->points.size();
             if(timeFlag == -1){
@@ -366,7 +356,6 @@ public:
                 }
             }
             else{
-                RCLCPP_INFO(node->get_logger(), "点云自带时间戳");
                 // 点云自带时间戳
                 
                 PointType point;
@@ -401,10 +390,8 @@ public:
                     deskewCloud->points[i] = point;
                 }
             }
-            RCLCPP_INFO(node->get_logger(), "Process Finished");
-        }else{
-            RCLCPP_ERROR(node->get_logger(), "Did not process");
         }
+        
         return true;
     }
 
@@ -455,33 +442,33 @@ public:
             if (range < lidarMinRange || range > lidarMaxRange)
                 continue;
             // 行索引为扫瞄线数
-            // float angle = atan(laserCloudIn->points[i].z / sqrt(laserCloudIn->points[i].x * laserCloudIn->points[i].x + laserCloudIn->points[i].y * laserCloudIn->points[i].y)) * 180 / M_PI; // 点到基座的俯仰角，单位：degree
-            // int scanID = 0;
-            // // 判断一个点属于哪个线上的点，scanID为线数的序列号
-            // // scanID = int((angle + 15) / 2 + 0.5);
-            // scanID = int(angle / 3.6875);
-            // // std::cout << "point ring: " << scanID << std::endl;
-            // if (scanID > (N_SCAN - 1) || scanID < 0)
-            // {
-            //     continue;
-            // }
-
-            // 判断一个点属于哪个线上的点，scanID为线数的序列号
+            float angle = atan(laserCloudIn->points[i].z / sqrt(laserCloudIn->points[i].x * laserCloudIn->points[i].x + laserCloudIn->points[i].y * laserCloudIn->points[i].y)) * 180 / M_PI; // 点到基座的俯仰角，单位：degree
             int scanID = 0;
-            if(ringFlag == 1){
-                scanID = laserCloudIn->points[i].ring;
-                if (scanID > (N_SCAN - 1) || scanID < 0)
-                {
-                    continue;
-                }
+            // 判断一个点属于哪个线上的点，scanID为线数的序列号
+            scanID = int((angle + 15) / 2 + 0.5);
+            // scanID = int(angle / 3.6875);
+            // std::cout << "point ring: " << scanID << std::endl;
+            if (scanID > (N_SCAN - 1) || scanID < 0)
+            {
+                continue;
             }
-            else{
-                if(!useAutoRing){
-                    RCLCPP_ERROR(node->get_logger(), "Point 'ring' field is not available, Trun param 'useAutoRing' to true!");
-                }
-                float verticalAngle = atan2(thisPoint.z, sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y)) * 180 / M_PI;
-                scanID = (verticalAngle + ang_bottom + 0.1) / ang_res_v;
-            }
+
+            // // 判断一个点属于哪个线上的点，scanID为线数的序列号
+            // int scanID = 0;
+            // if(ringFlag == 1){
+            //     scanID = laserCloudIn->points[i].ring;
+            //     if (scanID > (N_SCAN - 1) || scanID < 0)
+            //     {
+            //         continue;
+            //     }
+            // }
+            // else{
+            //     if(!useAutoRing){
+            //         RCLCPP_ERROR(node->get_logger(), "Point 'ring' field is not available, Trun param 'useAutoRing' to true!");
+            //     }
+            //     float verticalAngle = atan2(thisPoint.z, sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y)) * 180 / M_PI;
+            //     scanID = (verticalAngle + ang_bottom + 0.1) / ang_res_v;
+            // }
             int rowIdn = scanID;
             // int rowIdn = laserCloudIn->points[i].ring;
             if (rowIdn < 0 || rowIdn >= N_SCAN)
@@ -529,7 +516,7 @@ public:
             col = rangeMatInit.cols;
             cv::resize(rangeMatInit, rangeMatInit, cv::Size(), 1.0, 10.0);
             cv::flip(rangeMatInit, rangeMatInit, 0);
-            sensor_msgs::msg::Image::Ptr range_img = cv_bridge::CvImage(std_msgs::msg::Header(), "mono16", rangeMatInit).toImageMsg();
+            sensor_msgs::msg::Image::SharedPtr range_img = cv_bridge::CvImage(std_msgs::msg::Header(), "mono16", rangeMatInit).toImageMsg();
             range_img->header.frame_id = "camera";
             range_img->header.stamp = node->now();
             pubLaserRangeImg->publish(*range_img);
@@ -539,7 +526,6 @@ public:
     //! 对去畸变后的点云进行提取标记，方便后续提取特征，标记好每条扫瞄线的提取的点的行列和位置信息
     void cloudExtraction()
     {
-        std::cout << fullCloud->points.size() << std::endl;
         int count = 0;
         // extract segmented cloud for lidar odometry
         // 遍历每条扫瞄线

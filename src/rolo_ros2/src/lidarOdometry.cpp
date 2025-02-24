@@ -26,7 +26,7 @@
 #include <omp.h>
 
 using namespace Eigen;
-ofstream tum_file;
+// ofstream tum_file;
 
 
 class TransformFusion : public ParamLoader
@@ -103,17 +103,14 @@ public:
     //! 存储lidar_odom消息的变换关系
     void mappingOdometryHandler(const nav_msgs::msg::Odometry::SharedPtr odomMsg)
     {
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter mappingOdometryHandler\033[0m");
         std::lock_guard<std::mutex> lock(mtx);
         mappingOdomAffine = odom2affine(*odomMsg);
         mappingOdomTime = odomMsg->header.stamp.sec + odomMsg->header.stamp.nanosec / 1e9;
 
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave mappingOdometryHandler\033[0m");
     }
     //! imu预积分里程回调函数，根据后端优化后的激光里程消息，结合imu的位姿估计，得到当前时刻的位姿，并发布TF和odom消息，imu path
     void lidarOdometryHandler(const nav_msgs::msg::Odometry::SharedPtr odomMsg)
     {
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter lidarOdometryHandler\033[0m");
         // static tf
         // 设置map和odom坐标系重合，发布静态TF
         static  std::shared_ptr<tf2_ros::TransformBroadcaster> tfMap2Odom = std::make_shared<tf2_ros::TransformBroadcaster>(node);
@@ -122,14 +119,17 @@ public:
         static tf2::Transform map_to_odom = tf2::Transform(q0, tf2::Vector3(0, 0, 0));
 
         geometry_msgs::msg::TransformStamped static_transformStamped;
-        static_transformStamped.header.stamp = node->now();
+        static_transformStamped.header.stamp = odomMsg->header.stamp;
         static_transformStamped.header.frame_id = mapFrame;  
         static_transformStamped.child_frame_id = odometryFrame;  
         static_transformStamped.transform.translation.x = map_to_odom.getOrigin().x();
         static_transformStamped.transform.translation.y = map_to_odom.getOrigin().y();
         static_transformStamped.transform.translation.z = map_to_odom.getOrigin().z();
+        static_transformStamped.transform.rotation.x = map_to_odom.getRotation().x();
+        static_transformStamped.transform.rotation.y = map_to_odom.getRotation().y();
+        static_transformStamped.transform.rotation.z = map_to_odom.getRotation().z();
+        static_transformStamped.transform.rotation.w = map_to_odom.getRotation().w();
 
-        tf2::convert(map_to_odom.getRotation(), static_transformStamped.transform.rotation);
         tfMap2Odom->sendTransform(static_transformStamped);
 
         std::lock_guard<std::mutex> lock(mtx);
@@ -138,7 +138,6 @@ public:
 
         // get latest odometry (at current IMU stamp)
         if (mappingOdomTime == -1){
-            RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave lidarOdometryHandler\033[0m");
             return;
         }
         while (!lidarOdomQueue.empty())
@@ -246,7 +245,6 @@ public:
                 pubLidarPath->publish(lidarPath);
             }
         }
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave lidarOdometryHandler\033[0m");
     }
 };
 
@@ -309,7 +307,14 @@ private:
     Matrix3d Rotation;
     Vector3d Translation;
     Vector3d TranslationOld;
-    float LaserOdomPose[6] = {initPose[0], initPose[1], initPose[2], initPose[3], initPose[4], initPose[5]}; // [x, y, z, roll, pitch, yaw]
+    float LaserOdomPose[6] = {
+        static_cast<float>(initPose[0]),
+        static_cast<float>(initPose[1]),
+        static_cast<float>(initPose[2]),
+        static_cast<float>(initPose[3]),
+        static_cast<float>(initPose[4]),
+        static_cast<float>(initPose[5])
+    };// [x, y, z, roll, pitch, yaw]
 
 
 public:  
@@ -367,20 +372,18 @@ public:
 
     //! 接受后端的里程计消息，并与前端里程计融合
     void odometryHandler(const nav_msgs::msg::Odometry::SharedPtr mappedOdom){
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter odometryHandler\033[0m");
         // 当前时刻odom时间
         double currentCorrectionTime = mappedOdom->header.stamp.sec + mappedOdom->header.stamp.nanosec * 1e-9;
         nav_msgs::msg::Odometry mappedOdom_ = *mappedOdom;
         lastOdomTime = currentCorrectionTime;
         doneBackOpt = true;
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave odometryHandler\033[0m");
     }
 
     void scanRegeistration(){
-        if(featureOld->points.size() == 0 || featureLast->points.size() == 0){
-            RCLCPP_ERROR(node->get_logger(), "No feature cloud");
-            return;
-        }
+        // if(featureOld->points.size() == 0 || featureLast->points.size() == 0){
+        //     RCLCPP_ERROR(node->get_logger(), "No feature cloud");
+        //     return;
+        // }
             
         auto start = std::chrono::system_clock::now();
         // std::chrono::duration<double> elapsed_seconds = end - start;
@@ -393,7 +396,7 @@ public:
         feature_rotated->clear();
         // 先平移插值，使中心对齐
         pcl::transformPointCloud(*featureOld, *feature_propagated, transformation_interpolated);
-        
+        std::cout << "transformation_interpolated: " << transformation_interpolated.matrix() << std::endl;
         // fast_gicp::RotVGICP<PointType, PointType> rot_vgicp;
         // rot_vgicp.setResolution(1.0);
         // rot_vgicp.setNumThreads(omp_get_max_threads());
@@ -403,41 +406,41 @@ public:
         // rot_vgicp.setInputSource(feature_propagated);
         // rot_vgicp.align(*aligned);
         // Eigen::Matrix4f trans = rot_vgicp.getFinalTransformation(); // 旋转估计
-        // 确保点云的 is_dense 属性为 false
-        featureLast->is_dense = false;
-        feature_propagated->is_dense = false;
+        // // 确保点云的 is_dense 属性为 false
+        // featureLast->is_dense = false;
+        // feature_propagated->is_dense = false;
 
-        // 移除无效点
-        std::vector<int> indices;
-        pcl::removeNaNFromPointCloud(*featureLast, *featureLast, indices);
-        pcl::removeNaNFromPointCloud(*feature_propagated, *feature_propagated, indices);
+        // // 移除无效点
+        // std::vector<int> indices;
+        // pcl::removeNaNFromPointCloud(*featureLast, *featureLast, indices);
+        // pcl::removeNaNFromPointCloud(*feature_propagated, *feature_propagated, indices);
 
-        RCLCPP_INFO(node->get_logger(), "当前帧点云数：%ld, 上一帧点云数：%ld", featureLast->points.size(), feature_propagated->points.size());
-        // 检查点云是否为空
-        if (featureLast->points.empty() || feature_propagated->points.empty()) {
-            RCLCPP_ERROR(node->get_logger(), "有空点云");
-            return;
-        }
+        // RCLCPP_INFO(node->get_logger(), "当前帧点云数：%ld, 上一帧点云数：%ld", featureLast->points.size(), feature_propagated->points.size());
+        // // 检查点云是否为空
+        // if (featureLast->points.empty() || feature_propagated->points.empty()) {
+        //     RCLCPP_ERROR(node->get_logger(), "有空点云");
+        //     return;
+        // }
 
-        // 检查点云中的点是否有效
-        for (const auto& point : featureLast->points) {
-            if (!std::isinf(point.x) || !std::isinf(point.y) || !std::isinf(point.z)) {
-                RCLCPP_ERROR(node->get_logger(), "发现无效点");
-                return;
-            }
-        }
+        // // 检查点云中的点是否有效
+        // for (const auto& point : featureLast->points) {
+        //     if (!std::isinf(point.x) || !std::isinf(point.y) || !std::isinf(point.z)) {
+        //         RCLCPP_ERROR(node->get_logger(), "发现无效点");
+        //         return;
+        //     }
+        // }
 
         // 执行 ICP 配准
-        RCLCPP_INFO(node->get_logger(), "开始icp配准");
         fast_gicp::RotVGICP<PointType, PointType> rot_vgicp;
         rot_vgicp.setResolution(1.0);
         rot_vgicp.setNumThreads(omp_get_max_threads());
+        rot_vgicp.clearTarget();
+        rot_vgicp.clearSource();
         rot_vgicp.setInputTarget(featureLast);
         rot_vgicp.setInputSource(feature_propagated);
         rot_vgicp.align(*aligned);
 
         Eigen::Matrix4f trans = rot_vgicp.getFinalTransformation();
-        RCLCPP_INFO(node->get_logger(), "icp配准完成");
         
         // Rotation = trans.block<3, 3>(0, 0).cast<float>() * Rotation.eval();
         Eigen::Affine3f transformStep;
@@ -465,11 +468,20 @@ public:
         Eigen::Vector3d Reg_translation = Eigen::Vector3d::Zero();
         if (!(Translation == Eigen::Vector3d::Zero())) {
             RCLCPP_INFO(node->get_logger(), "Translation: %f, %f, %f", Translation(0), Translation(1), Translation(2));
-            rot_vgicp.computeTranslation(*aligned, Reg_translation, Translation, TranslationOld, 0.1, 0.1, CT_lambda);
+            try
+            {
+                rot_vgicp.computeTranslation(*aligned, Reg_translation, Translation, TranslationOld, 0.1, 0.1, CT_lambda);
+            }
+            catch(const std::exception& e)
+            {
+                std::cerr << e.what() << '\n';
+            }
+            
+            
         }
         else{
-            RCLCPP_ERROR(node->get_logger(), "Translation is not valid");
-            return;
+            std::cout << "Translation: " << Translation.transpose() << std::endl;
+            // return;
         }
            
         std::cout << "Reg_translation: " << Reg_translation.transpose() << std::endl;
@@ -481,7 +493,6 @@ public:
     }
 
     void cloudHandler(const rolo_ros2_interfaces::msg::CloudInfoStamp::SharedPtr cloudIn){
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter cloudHandler\033[0m");
         // 取时间戳,入buffer
         cloudTimeStamp = cloudIn->header.stamp;
         cloudTimeCur = cloudIn->header.stamp.sec + cloudIn->header.stamp.nanosec * 1e-9;
@@ -512,7 +523,6 @@ public:
             *CloudCornerOld = *CloudCornerLast;
             *CloudSurfOld = *CloudSurfLast;
             *featureOld = *featureLast;
-            RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave cloudHandler\033[0m");
             return;
         }
 
@@ -522,7 +532,6 @@ public:
         if (lastOdomTime == -1.0){
             updateTransform();
             pubMessage();
-            RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave cloudHandler\033[0m");
             return;
         }
 
@@ -554,7 +563,7 @@ public:
             printf(" Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n Failure Transformation! Resetting! \n "); 
             failureFrameFlag = false;
         }
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave cloudHandler\033[0m");
+
         // auto f_end = std::chrono::system_clock::now();
         // std::chrono::duration<double> r_elapsed_seconds = f_end - f_start;
         // // 保存前段时间消耗
@@ -571,20 +580,20 @@ public:
         trans.col(3).head<3>() = Translation;  // 将 Translation 赋值到第 4 列的前 3 个元素
 
         size_t cloudSize = FullCloudLast->points.size();
-        if(!cloudSize){
-            std::cout << "Cloud size: " << cloudSize << std::endl;
-            return;
-        }
+        // if(!cloudSize){
+        //     std::cout << "Cloud size: " << cloudSize << std::endl;
+        //     return;
+        // }
 
         
         RegCloud->clear();
         RegCloud->resize(cloudSize);
         RegCloud->points = FullCloudLast->points;
 
-        if (trans.array().isNaN().any() || trans.array().isInf().any()) {
-            std::cerr << "Error: Transformation matrix contains NaN or Inf!" << std::endl;
-            return;
-        }
+        // if (trans.array().isNaN().any() || trans.array().isInf().any()) {
+        //     std::cerr << "Error: Transformation matrix contains NaN or Inf!" << std::endl;
+        //     return;
+        // }
         
         pcl::transformPointCloud(*FullCloudLast, *RegCloud, trans);
         
@@ -658,13 +667,15 @@ public:
         static std::shared_ptr<tf2_ros::TransformBroadcaster> br = std::make_shared<tf2_ros::TransformBroadcaster>(node);
         tf2::Transform t_odom_to_lidar;
         t_odom_to_lidar.setOrigin(tf2::Vector3(LaserOdomPose[0], LaserOdomPose[1], LaserOdomPose[2]));
-        t_odom_to_lidar.setRotation(tf2::Quaternion(LaserOdomPose[3], LaserOdomPose[4], LaserOdomPose[5], LaserOdomPose[6]));
+        tf2::Quaternion q;
+        q.setRPY(LaserOdomPose[3], LaserOdomPose[4], LaserOdomPose[5]);
+        t_odom_to_lidar.setRotation(q);
         geometry_msgs::msg::TransformStamped pose_stamped;
 
         pose_stamped.transform = tf2::toMsg(t_odom_to_lidar);
         pose_stamped.header.stamp = cloudTimeStamp;
         pose_stamped.header.frame_id = odometryFrame;
-        pose_stamped.child_frame_id = lidarFrame;
+        pose_stamped.child_frame_id = "lidar";
         
         br->sendTransform(pose_stamped);
     
@@ -736,7 +747,6 @@ int main(int argc, char** argv)
     rclcpp::init(argc, argv);
     auto node_LO = std::make_shared<rclcpp::Node>("rolo_ros2");
     auto node_TF = std::make_shared<rclcpp::Node>("tf_broadcaster");
-
 
 
     LidarOdometry LO(node_LO);

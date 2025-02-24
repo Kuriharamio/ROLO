@@ -1,7 +1,6 @@
 #ifndef ROT_VGICP_IMPL_HPP
 #define ROT_VGICP_IMPL_HPP
 
-#include <GeographicLib/Math.hpp>
 #include <atomic>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -124,6 +123,7 @@ void RotVGICP<PointSource, PointTarget>::setInputTarget(const PointCloudTargetCo
   if (target_ == cloud) {
     return;
   }
+
   pcl::Registration<PointSource, PointTarget, Scalar>::setInputTarget(cloud);
   search_target_->setInputCloud(cloud);
   target_covs_.clear();
@@ -344,13 +344,13 @@ double RotVGICP<PointSource, PointTarget>::so3_linearize(const Eigen::Isometry3d
     // std::cout << "dtdx0" << dtdx0 << std::endl;
     // std::cout << "voxel_mahalanobis_so3" << voxel_mahalanobis_so3 << std::endl;
     // std::cout << "error" << error << std::endl;
-    // if(isnan(w)){
-    //   std::cout << "target_voxel->num_points: " << target_voxel->num_points << std::endl;
-    //   std::cout << "target_voxel->kappa: " << target_voxel->kappa << std::endl;
-    //   std::cout << "target_voxel->r_bar: " << target_voxel->r_bar << std::endl;
-    //   std::cout << "target_voxel->cov: " << target_voxel->cov << std::endl;
-    //   std::cout << "target_voxel->mean_dir: " << target_voxel->mean_dir << std::endl;
-    // }
+    if(std::isnan(w)){
+      std::cout << "target_voxel->num_points: " << target_voxel->num_points << std::endl;
+      std::cout << "target_voxel->kappa: " << target_voxel->kappa << std::endl;
+      std::cout << "target_voxel->r_bar: " << target_voxel->r_bar << std::endl;
+      std::cout << "target_voxel->cov: " << target_voxel->cov << std::endl;
+      std::cout << "target_voxel->mean_dir: " << target_voxel->mean_dir << std::endl;
+    }
 
     // 海森矩阵
     Eigen::Matrix<double, 3, 3> Hi = w * jlossexp.transpose() * voxel_mahalanobis_so3 * jlossexp;
@@ -487,15 +487,16 @@ double RotVGICP<PointSource, PointTarget>::t3_linearize(const Eigen::Vector3d& t
                                                         const double interval_tn, const double interval_tn_1,
                                                         Eigen::Matrix<double, 6, 6>* H, Eigen::Matrix<double, 6, 1>* b) {
   // 若没有构建体素地图，先构建体素地图
-  if (voxelmap_ == nullptr) {
-    voxelmap_.reset(new VmfVoxelMap<PointTarget>(voxel_resolution_, voxel_mode_));
-    voxelmap_->create_voxelmap(*target_, target_covs_);
-  }
+  // if (voxelmap_ == nullptr) {
+  //   voxelmap_.reset(new VmfVoxelMap<PointTarget>(voxel_resolution_, voxel_mode_));
+  //   voxelmap_->create_voxelmap(*target_, target_covs_);
+  // }
 
-  Eigen::Isometry3d tranform = Eigen::Isometry3d::Identity();
-  tranform.matrix().col(3).head<3>() = trans;
-  update_correspondences(tranform);
-  
+
+  // Eigen::Isometry3d tranform = Eigen::Isometry3d::Identity();
+  // tranform.matrix().col(3).head<3>() = trans;
+  // update_correspondences(tranform);
+  std::cout << "transed_mean_A";
   double sum_errors = 0.0;
   std::vector<Eigen::Matrix<double, 6, 6>, Eigen::aligned_allocator<Eigen::Matrix<double, 3, 3>>> Hs(num_threads_);
   std::vector<Eigen::Matrix<double, 6, 1>, Eigen::aligned_allocator<Eigen::Matrix<double, 3, 1>>> bs(num_threads_);
@@ -543,17 +544,17 @@ double RotVGICP<PointSource, PointTarget>::t3_linearize(const Eigen::Vector3d& t
       continue;
     }
 
-    // std::cout << "transed_mean_A" << transed_mean_A << std::endl;  
+    std::cout << "transed_mean_A" << transed_mean_A << std::endl;  
     // std::cout << "voxel_mahalanobis_so3" << voxel_mahalanobis_[i] << std::endl;  
     Eigen::Matrix3d voxel_mahalanobis_so3 = voxel_mahalanobis_[i].block<3,3>(0,0).matrix();
   
-    // if(isnan(w)){
-    //   std::cout << "target_voxel->num_points: " << target_voxel->num_points << std::endl;
-    //   std::cout << "target_voxel->kappa: " << target_voxel->kappa << std::endl;
-    //   std::cout << "target_voxel->r_bar: " << target_voxel->r_bar << std::endl;
-    //   std::cout << "target_voxel->cov: " << target_voxel->cov << std::endl;
-    //   std::cout << "target_voxel->mean_dir: " << target_voxel->mean_dir << std::endl;
-    // }
+    if(std::isnan(w)){
+      std::cout << "target_voxel->num_points: " << target_voxel->num_points << std::endl;
+      std::cout << "target_voxel->kappa: " << target_voxel->kappa << std::endl;
+      std::cout << "target_voxel->r_bar: " << target_voxel->r_bar << std::endl;
+      std::cout << "target_voxel->cov: " << target_voxel->cov << std::endl;
+      std::cout << "target_voxel->mean_dir: " << target_voxel->mean_dir << std::endl;
+    }
 
     // 利用李代数扰动模型，对位姿进行求导，得到雅可比矩阵
     Eigen::Matrix<double, 4, 6> dtdx0 = Eigen::Matrix<double, 4, 6>::Zero();

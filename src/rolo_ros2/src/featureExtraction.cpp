@@ -20,13 +20,13 @@ public:
     rclcpp::Publisher<rolo_ros2_interfaces::msg::CloudInfoStamp>::SharedPtr  pubLaserCloudInfo;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr  pubCornerPoints;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr  pubSurfacePoints;
-    // rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr  pubNormalPoints;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr  pubNormalPoints;
     
 
     pcl::PointCloud<PointType>::Ptr extractedCloud; // 输入点云
     pcl::PointCloud<PointType>::Ptr cornerCloud;    // 角点集合
     pcl::PointCloud<PointType>::Ptr surfaceCloud;   // 平面点集合
-    // pcl::PointCloud<PointType>::Ptr normalCloud;    // 地面点集合
+    pcl::PointCloud<PointType>::Ptr normalCloud;    // 地面点集合
 
     pcl::VoxelGrid<PointType> downSizeFilter;
 
@@ -47,7 +47,7 @@ public:
         pubLaserCloudInfo = node->create_publisher<rolo_ros2_interfaces::msg::CloudInfoStamp>("rolo/feature/cloud_info", 1);
         pubCornerPoints = node->create_publisher<sensor_msgs::msg::PointCloud2>("rolo/feature/cloud_corner", 1);
         pubSurfacePoints = node->create_publisher<sensor_msgs::msg::PointCloud2>("rolo/feature/cloud_surface", 1);
-        // pubNormalPoints = node->create_publisher<sensor_msgs::msg::PointCloud2>("rolo/feature/cloud_normal", 1);
+        pubNormalPoints = node->create_publisher<sensor_msgs::msg::PointCloud2>("rolo/feature/cloud_normal", 1);
 
         initializationValue();
     }
@@ -61,7 +61,7 @@ public:
         extractedCloud.reset(new pcl::PointCloud<PointType>());
         cornerCloud.reset(new pcl::PointCloud<PointType>());
         surfaceCloud.reset(new pcl::PointCloud<PointType>());
-        // normalCloud.reset(new pcl::PointCloud<PointType>());
+        normalCloud.reset(new pcl::PointCloud<PointType>());
 
 
         cloudCurvature = new float[N_SCAN*Horizon_SCAN];
@@ -71,7 +71,6 @@ public:
     //! range_image回调函数，主要完成：平滑度计算，特征提取，输出点云
     void laserCloudInfoHandler(const rolo_ros2_interfaces::msg::CloudInfoStamp::SharedPtr cloudIn)
     {
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Enter laserCloudInfoHandler\033[0m");
         // 存储msgIn
         cloudInfo = *cloudIn; // new cloud info
         cloudHeader = cloudIn->header; // new cloud header
@@ -84,7 +83,6 @@ public:
         extractFeatures();
         // 发布输出点云消息
         publishFeatureCloud();
-        RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Leave laserCloudInfoHandler\033[0m");
     }
     //! 遍历输入点云，计算每个点的平滑度，并标记存储
     void calculateSmoothness()
@@ -157,7 +155,7 @@ public:
     {
         cornerCloud->clear();
         surfaceCloud->clear();
-        // normalCloud->clear();
+        normalCloud->clear();
 
         pcl::PointCloud<PointType>::Ptr surfaceCloudScan(new pcl::PointCloud<PointType>());     // 当前帧原始平面点
         pcl::PointCloud<PointType>::Ptr surfaceCloudScanDS(new pcl::PointCloud<PointType>());   // 滤波后的平面点
@@ -168,7 +166,7 @@ public:
         for (int i = 0; i < N_SCAN; i++)
         {
             surfaceCloudScan->clear();
-            // normalCloudScan->clear();
+            normalCloudScan->clear();
             // 横向上分为6个扇区
             for (int j = 0; j < 6; j++)
             {
@@ -259,12 +257,12 @@ public:
             surfaceCloudScanDS->clear();
             downSizeFilter.setInputCloud(surfaceCloudScan);
             downSizeFilter.filter(*surfaceCloudScanDS);
-            // normalCloudScanDS->clear();
-            // downSizeFilter.setInputCloud(normalCloudScan);
-            // downSizeFilter.filter(*normalCloudScanDS);
+            normalCloudScanDS->clear();
+            downSizeFilter.setInputCloud(normalCloudScan);
+            downSizeFilter.filter(*normalCloudScanDS);
 
             *surfaceCloud += *surfaceCloudScanDS;
-            // *normalCloud += *normalCloudScanDS;
+            *normalCloud += *normalCloudScanDS;
         }
     }
     //! 特征提取完成后，清除输入点云中的无用信息
@@ -283,7 +281,7 @@ public:
         // save newly extracted features
         cloudInfo.extracted_corner  = publishCloud(pubCornerPoints,  cornerCloud,  cloudHeader.stamp, lidarFrame);
         cloudInfo.extracted_surface = publishCloud(pubSurfacePoints, surfaceCloud, cloudHeader.stamp, lidarFrame);
-        // cloudInfo.extracted_normal = publishCloud(pubNormalPoints, normalCloud, cloudHeader.stamp, lidarFrame);
+        cloudInfo.extracted_normal = publishCloud(pubNormalPoints, normalCloud, cloudHeader.stamp, lidarFrame);
 
         // publish to mapOptimization
         pubLaserCloudInfo->publish(cloudInfo);

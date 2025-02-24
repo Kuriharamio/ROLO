@@ -1,13 +1,17 @@
 cmake_minimum_required(VERSION 3.8)
 project(rolo_ros2)
 
+set(CMAKE_BUILD_TYPE "Release")
+set(CMAKE_CXX_FLAGS "-O3 -Wall -g")
+set(CMAKE_CXX_STANDARD 14)
+
 if(POLICY CMP0074)
     cmake_policy(SET CMP0074 NEW)
 endif()
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+# if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+#   add_compile_options(-Wall -Wextra -Wpedantic)
+# endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
@@ -25,7 +29,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(rolo_ros2_interfaces REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(OpenCV REQUIRED)
+find_package(OpenCV 4.10 REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(GTSAM REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -36,6 +40,22 @@ find_package(rosidl_default_generators REQUIRED)
 if (OPENMP_FOUND)
   set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+
+unset(PMC CACHE)
+find_library(PMC pmc)
+if(${PMC} STREQUAL "PMC-NOTFOUND")
+    message(WARNING "PMC library was not found, Git Now")
+    execute_process(COMMAND mkdir ${CMAKE_BINARY_DIR}/pmc-src)
+    execute_process(COMMAND mkdir ${CMAKE_BINARY_DIR}/pmc-build)
+    
+    configure_file(cmake/pmc.CMakeLists.txt ${CMAKE_BINARY_DIR}/pmc-download/CMakeLists.txt)
+    execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pmc-download")
+    execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pmc-download")
+    add_subdirectory("${CMAKE_BINARY_DIR}/pmc-src"
+            "${CMAKE_BINARY_DIR}/pmc-build")
 endif()
 
 add_subdirectory(./ThirdParty/GeographicLib/)
@@ -65,6 +85,12 @@ target_link_libraries(rot_gicp
   ${PCL_LIBRARIES}
 )
 
+if (OPENMP_FOUND)
+    if (TARGET OpenMP::OpenMP_CXX)
+        target_link_libraries(rot_gicp OpenMP::OpenMP_CXX)
+    endif ()
+endif ()
+
 target_include_directories(rot_gicp PUBLIC
   include
   ${PCL_INCLUDE_DIRS}
@@ -87,9 +113,9 @@ add_executable(backMapping src/backMapping.cpp)
 ament_target_dependencies(backMapping rclcpp rclcpp_components geometry_msgs nav_msgs pcl_ros std_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs visualization_msgs rolo_ros2_interfaces PCL pcl_conversions OpenCV cv_bridge GTSAM Eigen3 Boost OpenMP)
 target_link_libraries(backMapping ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam libGeographic)
 
-add_executable(slopeEstimation src/slopeEstimation.cpp)
-ament_target_dependencies(slopeEstimation rclcpp rclcpp_components geometry_msgs nav_msgs pcl_ros std_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs visualization_msgs rolo_ros2_interfaces PCL pcl_conversions OpenCV cv_bridge GTSAM Eigen3 Boost OpenMP)
-target_link_libraries(slopeEstimation ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam libGeographic)
+# add_executable(slopeEstimation src/slopeEstimation.cpp)
+# ament_target_dependencies(slopeEstimation rclcpp rclcpp_components geometry_msgs nav_msgs pcl_ros std_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs visualization_msgs rolo_ros2_interfaces PCL pcl_conversions OpenCV cv_bridge GTSAM Eigen3 Boost OpenMP)
+# target_link_libraries(slopeEstimation ${OpenMP_LIBS} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${OpenMP_CXX_FLAGS} ${EIGEN_LIBRARIES} gtsam libGeographic)
 
 install(TARGETS
   imageProjection
@@ -111,14 +137,14 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(TARGETS
-  slopeEstimation
-  DESTINATION lib/${PROJECT_NAME}
-)
+# install(TARGETS
+#   slopeEstimation
+#   DESTINATION lib/${PROJECT_NAME}
+# )
 
 
 install(
-  DIRECTORY src include launch param rviz ThirdParty
+  DIRECTORY src include launch param rviz ThirdParty cmake
   DESTINATION share/${PROJECT_NAME}
 )
 
