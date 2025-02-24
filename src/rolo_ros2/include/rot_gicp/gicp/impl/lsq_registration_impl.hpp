@@ -87,10 +87,10 @@ bool LsqRegistration<PointTarget, PointSource>::step_t_optimize(Eigen::Vector3d&
   Eigen::Matrix<double, 6, 6> H;  // 海森矩阵
   Eigen::Matrix<double, 6, 1> b;  // 偏置
   
-  std::cout << "x0:\n " << x0.matrix() << std::endl;
+  // std::cout << "x0:\n " << x0.matrix() << std::endl;
   double y0 = t3_linearize(x0, init_guess, last_t0, interval_tn, interval_tn_1, &H, &b); // y0：总误差，x0：变换矩阵
-  std::cout << "H: " << std::endl << H << std::endl;
-  std::cout << "b: " << std::endl << b.transpose() << std::endl;
+  // std::cout << "H: " << std::endl << H << std::endl;
+  // std::cout << "b: " << std::endl << b.transpose() << std::endl;
 
   if (lm_lambda_ < 0.0) {
     lm_lambda_ = lm_init_lambda_factor_ * H.diagonal().array().abs().maxCoeff();

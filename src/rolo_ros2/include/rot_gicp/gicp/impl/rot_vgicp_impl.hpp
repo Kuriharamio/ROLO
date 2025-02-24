@@ -496,7 +496,6 @@ double RotVGICP<PointSource, PointTarget>::t3_linearize(const Eigen::Vector3d& t
   // Eigen::Isometry3d tranform = Eigen::Isometry3d::Identity();
   // tranform.matrix().col(3).head<3>() = trans;
   // update_correspondences(tranform);
-  std::cout << "transed_mean_A";
   double sum_errors = 0.0;
   std::vector<Eigen::Matrix<double, 6, 6>, Eigen::aligned_allocator<Eigen::Matrix<double, 3, 3>>> Hs(num_threads_);
   std::vector<Eigen::Matrix<double, 6, 1>, Eigen::aligned_allocator<Eigen::Matrix<double, 3, 1>>> bs(num_threads_);
@@ -544,7 +543,6 @@ double RotVGICP<PointSource, PointTarget>::t3_linearize(const Eigen::Vector3d& t
       continue;
     }
 
-    std::cout << "transed_mean_A" << transed_mean_A << std::endl;  
     // std::cout << "voxel_mahalanobis_so3" << voxel_mahalanobis_[i] << std::endl;  
     Eigen::Matrix3d voxel_mahalanobis_so3 = voxel_mahalanobis_[i].block<3,3>(0,0).matrix();
   

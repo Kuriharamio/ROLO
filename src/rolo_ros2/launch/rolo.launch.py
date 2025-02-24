@@ -74,6 +74,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        tf_broadcaster,
         transformfusion,
         imageProjection,
         featureExtraction,
