@@ -129,7 +129,11 @@ public:
         static_transformStamped.transform.rotation.y = map_to_odom.getRotation().y();
         static_transformStamped.transform.rotation.z = map_to_odom.getRotation().z();
         static_transformStamped.transform.rotation.w = map_to_odom.getRotation().w();
-
+        tf2::Quaternion quaternion = tf2::Quaternion(map_to_odom.getRotation().x(), map_to_odom.getRotation().y(), map_to_odom.getRotation().z(), map_to_odom.getRotation().w());
+        if (std::isnan(quaternion.x()) || std::isnan(quaternion.y()) || std::isnan(quaternion.z()) || std::isnan(quaternion.w())) {
+            // 四元数无效，需要处理
+            return;
+        }
         tfMap2Odom->sendTransform(static_transformStamped);
 
         std::lock_guard<std::mutex> lock(mtx);
@@ -221,6 +225,11 @@ public:
         odom_2_baselink.transform.rotation.y = tCur.getRotation().y();
         odom_2_baselink.transform.rotation.z = tCur.getRotation().z();
         odom_2_baselink.transform.rotation.w = tCur.getRotation().w();
+        quaternion = tf2::Quaternion(tCur.getRotation().x(), tCur.getRotation().y(), tCur.getRotation().z(), tCur.getRotation().w());
+        if (std::isnan(quaternion.x()) || std::isnan(quaternion.y()) || std::isnan(quaternion.z()) || std::isnan(quaternion.w())) {
+            // 四元数无效，需要处理
+            return;
+        }
         tfOdom2BaseLink->sendTransform(odom_2_baselink);
 
         // publish Lidar odometry path

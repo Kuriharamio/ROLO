@@ -1613,6 +1613,10 @@ public:
         trans_odom_to_lidar.transform.rotation.y = q1.y();
         trans_odom_to_lidar.transform.rotation.z = q1.z();
         trans_odom_to_lidar.transform.rotation.w = q1.w();
+        if (std::isnan(q1.x()) || std::isnan(q1.y()) || std::isnan(q1.z()) || std::isnan(q1.w())) {
+            // 四元数无效，需要处理
+            return;
+        }
 
         // 发布变换
         br.sendTransform(trans_odom_to_lidar);

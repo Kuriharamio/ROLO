@@ -163,6 +163,7 @@ public:
 
     void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr laserCloudMsg)
     {
+        std::cout << "size: " << laserCloudMsg->data.size() << std::endl;
         // 存储点云，转换格式
         if (!cachePointCloud(laserCloudMsg)){
             return;
@@ -233,26 +234,26 @@ public:
         if (laserCloudIn->is_dense == false)
         {
             RCLCPP_ERROR(node->get_logger(), "Point cloud is not in dense format, please remove NaN points first!");
-            rclcpp::shutdown();
+            // rclcpp::shutdown();
             // RCLCPP_WARN(node->get_logger(), "Point cloud is not in dense format. Removing NaN points...");
 
             // // 遍历点云，移除无效点
-            // for (size_t i = 0; i < laserCloudIn->points.size(); ++i)
-            // {
-            //     // 检查每个点是否为无效点（NaN）
-            //     if (std::isnan(laserCloudIn->points[i].x) || std::isnan(laserCloudIn->points[i].y) || std::isnan(laserCloudIn->points[i].z))
-            //     {
-            //         // 将无效点替换为零点（或其他默认值）
-            //         laserCloudIn->points[i].x = 0.0;
-            //         laserCloudIn->points[i].y = 0.0;
-            //         laserCloudIn->points[i].z = 0.0;
-            //     }
-            // }
+            for (size_t i = 0; i < laserCloudIn->points.size(); ++i)
+            {
+                // 检查每个点是否为无效点（NaN）
+                if (std::isnan(laserCloudIn->points[i].x) || std::isnan(laserCloudIn->points[i].y) || std::isnan(laserCloudIn->points[i].z))
+                {
+                    // 将无效点替换为零点（或其他默认值）
+                    laserCloudIn->points[i].x = 0.0;
+                    laserCloudIn->points[i].y = 0.0;
+                    laserCloudIn->points[i].z = 0.0;
+                }
+            }
 
-            // // 设置点云为密集格式
-            // laserCloudIn->is_dense = true;
+            // 设置点云为密集格式
+            laserCloudIn->is_dense = true;
 
-            // RCLCPP_INFO(node->get_logger(), "NaN points have been removed. Point cloud is now dense.");
+            RCLCPP_INFO(node->get_logger(), "NaN points have been removed. Point cloud is now dense.");
         }
         static int ringFlag =0;
         // check ring channel
@@ -445,7 +446,7 @@ public:
             float angle = atan(laserCloudIn->points[i].z / sqrt(laserCloudIn->points[i].x * laserCloudIn->points[i].x + laserCloudIn->points[i].y * laserCloudIn->points[i].y)) * 180 / M_PI; // 点到基座的俯仰角，单位：degree
             int scanID = 0;
             // 判断一个点属于哪个线上的点，scanID为线数的序列号
-            scanID = int((angle + 15) / 2 + 0.5);
+            scanID = int((angle + 3) / 2.0);
             // scanID = int(angle / 3.6875);
             // std::cout << "point ring: " << scanID << std::endl;
             if (scanID > (N_SCAN - 1) || scanID < 0)

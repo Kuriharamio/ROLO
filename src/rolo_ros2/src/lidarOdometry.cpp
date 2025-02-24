@@ -160,11 +160,10 @@ public:
     }
 
     void scanRegeistration(){
-        // if(featureOld->points.size() == 0 || featureLast->points.size() == 0){
-        //     RCLCPP_ERROR(node->get_logger(), "No feature cloud");
-        //     return;
-        // }
-            
+        // std::vector<int> indices;
+        // featureLast->is_dense = false;
+        // pcl::removeNaNFromPointCloud(*featureLast, *featureLast, indices);
+
         auto start = std::chrono::system_clock::now();
         // std::chrono::duration<double> elapsed_seconds = end - start;
         // printf("Solver Duration: %f ms.\n" ,elapsed_seconds.count() * 1000);
@@ -175,25 +174,9 @@ public:
         feature_propagated->clear();
         feature_rotated->clear();
         // 先平移插值，使中心对齐
+        
         pcl::transformPointCloud(*featureOld, *feature_propagated, transformation_interpolated);
         // std::cout << "transformation_interpolated: " << transformation_interpolated.matrix() << std::endl;
-        // fast_gicp::RotVGICP<PointType, PointType> rot_vgicp;
-        // rot_vgicp.setResolution(1.0);
-        // rot_vgicp.setNumThreads(omp_get_max_threads());
-        // // rot_vgicp.clearTarget();
-        // // rot_vgicp.clearSource();
-        // rot_vgicp.setInputTarget(featureLast);
-        // rot_vgicp.setInputSource(feature_propagated);
-        // rot_vgicp.align(*aligned);
-        // Eigen::Matrix4f trans = rot_vgicp.getFinalTransformation(); // 旋转估计
-        // // 确保点云的 is_dense 属性为 false
-        // featureLast->is_dense = false;
-        // feature_propagated->is_dense = false;
-
-        // // 移除无效点
-        // std::vector<int> indices;
-        // pcl::removeNaNFromPointCloud(*featureLast, *featureLast, indices);
-        // pcl::removeNaNFromPointCloud(*feature_propagated, *feature_propagated, indices);
 
         // RCLCPP_INFO(node->get_logger(), "当前帧点云数：%ld, 上一帧点云数：%ld", featureLast->points.size(), feature_propagated->points.size());
         // // 检查点云是否为空
@@ -246,7 +229,7 @@ public:
         aligned->clear();
         pcl::transformPointCloud(*featureOld, *feature_rotated, transformation_interpolated);
         Eigen::Vector3d Reg_translation = Eigen::Vector3d::Zero();
-
+        std::cout << "translation: " << Translation.transpose() << std::endl;
         rot_vgicp.computeTranslation(*aligned, Reg_translation, Translation, TranslationOld, 0.1, 0.1, CT_lambda);
 
            
@@ -442,7 +425,10 @@ public:
         pose_stamped.header.stamp = cloudTimeStamp;
         pose_stamped.header.frame_id = odometryFrame;
         pose_stamped.child_frame_id = "lidar";
-        
+        if (std::isnan(q.x()) || std::isnan(q.y()) || std::isnan(q.z()) || std::isnan(q.w())) {
+            // 四元数无效，需要处理
+            return;
+        }
         br->sendTransform(pose_stamped);
     
     }

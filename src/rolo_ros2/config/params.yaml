@@ -1,7 +1,7 @@
-rolo_ros2:
+imageProjection:
   ros__parameters:
     robot_id: "roboat"
-    pointCloudTopic: "/velodyne_points"
+    pointCloudTopic: "/livox/lidar_PointCloud2"
     odomTopic: "/odometry"
     lidarFrame: "laser_link"
     baselinkFrame: "base_link"
@@ -44,7 +44,239 @@ rolo_ros2:
     surroundingKeyframeDensity: 2.0
     surroundingKeyframeSearchRadius: 50.0
 
-    loopClosureEnableFlag: true
+    loopClosureEnableFlag: false
+    loopClosureFrequency: 1.0
+    surroundingKeyframeSize: 50
+    historyKeyframeSearchRadius: 30.0
+    historyKeyframeSearchTimeDiff: 30.0
+    historyKeyframeSearchNum: 25
+    historyKeyframeFitnessScore: 0.3
+
+    globalMapVisualizationSearchRadius: 1000.0
+    globalMapVisualizationPoseDensity: 10.0
+    globalMapVisualizationLeafSize: 1.0
+
+transformfusion:
+  ros__parameters:
+    robot_id: "roboat"
+    pointCloudTopic: "/livox/lidar_PointCloud2"
+    odomTopic: "/odometry"
+    lidarFrame: "laser_link"
+    baselinkFrame: "base_link"
+    odometryFrame: "odometry"
+    mapFrame: "map"
+    initPose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    savePCD: false
+    savePCDDirectory: "/Downloads/LOAM/"
+    sensor: "velodyne"
+
+    N_SCAN: 32
+    Horizon_SCAN: 1800
+    downsampleRate: 1
+    lidarMinRange: 0.1
+    lidarMaxRange: 1000.0
+    lidarNoiseBound: 0.05
+    deskewEnabled: false
+
+    edgeThreshold: 0.8
+    surfThreshold: 0.1
+    nearestFeatureSearchSqDist: 25.0
+    edgeFeatureMinValidNum: 20
+    surfFeatureMinValidNum: 100
+
+    odometrySurfLeafSize: 0.4
+    mappingCornerLeafSize: 0.2
+    mappingSurfLeafSize: 0.4
+
+    z_tollerance: 1000.0
+    rotation_tollerance: 1000.0
+
+    numberOfCores: 8
+    mappingProcessInterval: 0.15
+
+    continuousTrajectoryWeight: 0.3
+
+    surroundingkeyframeAddingDistThreshold: 0.5
+    surroundingkeyframeAddingAngleThreshold: 0.2
+    surroundingKeyframeDensity: 2.0
+    surroundingKeyframeSearchRadius: 50.0
+
+    loopClosureEnableFlag: false
+    loopClosureFrequency: 1.0
+    surroundingKeyframeSize: 50
+    historyKeyframeSearchRadius: 30.0
+    historyKeyframeSearchTimeDiff: 30.0
+    historyKeyframeSearchNum: 25
+    historyKeyframeFitnessScore: 0.3
+
+    globalMapVisualizationSearchRadius: 1000.0
+    globalMapVisualizationPoseDensity: 10.0
+    globalMapVisualizationLeafSize: 1.0
+
+lidarOdometry:
+  ros__parameters:
+    robot_id: "roboat"
+    pointCloudTopic: "/livox/lidar_PointCloud2"
+    odomTopic: "/odometry"
+    lidarFrame: "laser_link"
+    baselinkFrame: "base_link"
+    odometryFrame: "odometry"
+    mapFrame: "map"
+    initPose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    savePCD: false
+    savePCDDirectory: "/Downloads/LOAM/"
+    sensor: "velodyne"
+
+    N_SCAN: 32
+    Horizon_SCAN: 1800
+    downsampleRate: 1
+    lidarMinRange: 0.1
+    lidarMaxRange: 1000.0
+    lidarNoiseBound: 0.05
+    deskewEnabled: false
+
+    edgeThreshold: 0.8
+    surfThreshold: 0.1
+    nearestFeatureSearchSqDist: 25.0
+    edgeFeatureMinValidNum: 20
+    surfFeatureMinValidNum: 100
+
+    odometrySurfLeafSize: 0.4
+    mappingCornerLeafSize: 0.2
+    mappingSurfLeafSize: 0.4
+
+    z_tollerance: 1000.0
+    rotation_tollerance: 1000.0
+
+    numberOfCores: 8
+    mappingProcessInterval: 0.15
+
+    continuousTrajectoryWeight: 0.3
+
+    surroundingkeyframeAddingDistThreshold: 0.5
+    surroundingkeyframeAddingAngleThreshold: 0.2
+    surroundingKeyframeDensity: 2.0
+    surroundingKeyframeSearchRadius: 50.0
+
+    loopClosureEnableFlag: false
+    loopClosureFrequency: 1.0
+    surroundingKeyframeSize: 50
+    historyKeyframeSearchRadius: 30.0
+    historyKeyframeSearchTimeDiff: 30.0
+    historyKeyframeSearchNum: 25
+    historyKeyframeFitnessScore: 0.3
+
+    globalMapVisualizationSearchRadius: 1000.0
+    globalMapVisualizationPoseDensity: 10.0
+    globalMapVisualizationLeafSize: 1.0
+
+featureExtraction:
+  ros__parameters:
+    robot_id: "roboat"
+    pointCloudTopic: "/livox/lidar_PointCloud2"
+    odomTopic: "/odometry"
+    lidarFrame: "laser_link"
+    baselinkFrame: "base_link"
+    odometryFrame: "odometry"
+    mapFrame: "map"
+    initPose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    savePCD: false
+    savePCDDirectory: "/Downloads/LOAM/"
+    sensor: "velodyne"
+
+    N_SCAN: 32
+    Horizon_SCAN: 1800
+    downsampleRate: 1
+    lidarMinRange: 0.1
+    lidarMaxRange: 1000.0
+    lidarNoiseBound: 0.05
+    deskewEnabled: false
+
+    edgeThreshold: 0.8
+    surfThreshold: 0.1
+    nearestFeatureSearchSqDist: 25.0
+    edgeFeatureMinValidNum: 20
+    surfFeatureMinValidNum: 100
+
+    odometrySurfLeafSize: 0.4
+    mappingCornerLeafSize: 0.2
+    mappingSurfLeafSize: 0.4
+
+    z_tollerance: 1000.0
+    rotation_tollerance: 1000.0
+
+    numberOfCores: 8
+    mappingProcessInterval: 0.15
+
+    continuousTrajectoryWeight: 0.3
+
+    surroundingkeyframeAddingDistThreshold: 0.5
+    surroundingkeyframeAddingAngleThreshold: 0.2
+    surroundingKeyframeDensity: 2.0
+    surroundingKeyframeSearchRadius: 50.0
+
+    loopClosureEnableFlag: false
+    loopClosureFrequency: 1.0
+    surroundingKeyframeSize: 50
+    historyKeyframeSearchRadius: 30.0
+    historyKeyframeSearchTimeDiff: 30.0
+    historyKeyframeSearchNum: 25
+    historyKeyframeFitnessScore: 0.3
+
+    globalMapVisualizationSearchRadius: 1000.0
+    globalMapVisualizationPoseDensity: 10.0
+    globalMapVisualizationLeafSize: 1.0
+
+backMapping:
+  ros__parameters:
+    robot_id: "roboat"
+    pointCloudTopic: "/livox/lidar_PointCloud2"
+    odomTopic: "/odometry"
+    lidarFrame: "laser_link"
+    baselinkFrame: "base_link"
+    odometryFrame: "odometry"
+    mapFrame: "map"
+    initPose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    savePCD: false
+    savePCDDirectory: "/Downloads/LOAM/"
+    sensor: "velodyne"
+
+    N_SCAN: 32
+    Horizon_SCAN: 1800
+    downsampleRate: 1
+    lidarMinRange: 0.1
+    lidarMaxRange: 1000.0
+    lidarNoiseBound: 0.05
+    deskewEnabled: false
+
+    edgeThreshold: 0.8
+    surfThreshold: 0.1
+    nearestFeatureSearchSqDist: 25.0
+    edgeFeatureMinValidNum: 20
+    surfFeatureMinValidNum: 100
+
+    odometrySurfLeafSize: 0.4
+    mappingCornerLeafSize: 0.2
+    mappingSurfLeafSize: 0.4
+
+    z_tollerance: 1000.0
+    rotation_tollerance: 1000.0
+
+    numberOfCores: 8
+    mappingProcessInterval: 0.15
+
+    continuousTrajectoryWeight: 0.3
+
+    surroundingkeyframeAddingDistThreshold: 0.5
+    surroundingkeyframeAddingAngleThreshold: 0.2
+    surroundingKeyframeDensity: 2.0
+    surroundingKeyframeSearchRadius: 50.0
+
+    loopClosureEnableFlag: false
     loopClosureFrequency: 1.0
     surroundingKeyframeSize: 50
     historyKeyframeSearchRadius: 30.0
