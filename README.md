@@ -1,6 +1,6 @@
 # 说明：
 
-本人学习使用，移植至ros2 humble，目前未完成
+本人学习使用，移植至ros2 humble
 
 原文：
 ROLO-SLAM:
